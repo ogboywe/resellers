@@ -1,4 +1,5 @@
 <?php
+require_once 'error_logger.php';
 // Trial-specific functions for 1-day trial accounts
 // Note: Helper functions (getGUID, string_between_two_string, getCookies) are provided by funcs.php
 
@@ -458,23 +459,22 @@ function generateTrialAccount($email, $firstName, $lastName, $phoneNumber, $user
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"id":null,"name":"' . $last4 . '","accessoryNotes":[],"accountNumber":null,"address":"384","city":"2938","country":"US","creditCards":[],"currentPaymentStatement":null,"customChannels":[],"customVods":[],"dateOfBirth":null,"deleted":null,"devices":[],"deviceSlots":[],"email":"' . $email . '","enabled":null,"expirationTime":null,"firstname":"' . $firstName . '","foreignPlatformSubscriberId":"","hasUnlimitedSubscription":null,"language":null,"lastAccess":null,"lastname":"' . $lastName . '","network":{"id":10000285,"name":"VTV","backgroundColor":null,"categorySets":[],"customVideoUrl":null,"deviceCount":0,"hasAssignedAcl":null,"hasAvodSubscription":null,"listingType":"Sequence","multiorgEnabled":false,"multiorgId":null,"networkCatchupLinks":[],"networkChannelLinks":[],"networkThemeLinks":[],"pincode":"","platforms":null,"prefix":"VV","startChannelSettingsEnabled":null,"startChannelSettingsDto":[],"startPageType":null,"staticChannel":null,"screenSaverSettings":null,"subscriberCount":null,"subscribers":[],"timezone":null,"voucherSubscribersAllowed":false,"logoUrl":null,"apiAccessUser":null},"notes":[],"password":"' . $userPass . '","paymentStatements":[],"phone":"' . $phoneNumber . '","pincode":"1234","registered":null,"state":"","timeZone":"America/Grenada","user":null,"zipcode":"9238","tvsAccountNumber":null,"tvsAccountStartDate":null,"tvsThaiId":null,"type":null}');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"id":null,"name":"' . $last4 . '","email":"' . $email . '","firstname":"' . $firstName . '","lastname":"' . $lastName . '","phone":"' . $phoneNumber . '","password":"' . $userPass . '","address":"384","city":"2938","country":"US","state":"","zipcode":"9238","pincode":"1234","timeZone":"America/Grenada","network":{"id":10000285}}');
 
     $response = curl_exec($ch);
 
     curl_close($ch);
 
     if(strpos($response, "already exist") !== false) {
-
+        NoraGoLogger::logError("generateTrialAccount", "subscriber_creation", "User already exists", $response);
         return "already_exist";
 
     } elseif(strpos($response, 'externalId') !== false) {
-
-        //echo "Success creating user!";
+        NoraGoLogger::logSuccess("generateTrialAccount", "subscriber_creation", "Subscriber created successfully");
 
     } else {
-
-        return "unknown_error1";
+        NoraGoLogger::logError("generateTrialAccount", "subscriber_creation", "Failed to create subscriber", $response);
+        return NoraGoLogger::getSpecificError("generateTrialAccount", "subscriber_creation");
 
     }
 
@@ -700,11 +700,210 @@ function generateTrialAccount($email, $firstName, $lastName, $phoneNumber, $user
     curl_setopt($ch, CURLOPT_POSTFIELDS, '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' .  $id . ',"autoPay":false,"comment":null,"contentAddonsAutoPay":false,"devicesToPay":6,"length":1,"lengthType":"Days","override":true,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":210406315,"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}');
 
     $response = curl_exec($ch);
-
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    //echo $response;
+    if($http_code == 201 || $http_code == 200) {
+        NoraGoLogger::logSuccess("generateTrialAccount", "payment_creation", "Trial payment created successfully for subscriber " . $id);
+        return $id;
+    } else {
+        NoraGoLogger::logError("generateTrialAccount", "payment_creation", "Failed to create trial payment - HTTP " . $http_code, $response);
+        return NoraGoLogger::getSpecificError("generateTrialAccount", "payment_creation");
+    }
 
-    return $id;
+}
 
+function convertTrialToCustomer($trialId) {
+    $GUID = getGUID();
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/auth?client_id=NoraUI&redirect_uri=https%3A%2F%2Ffreeworld.norago.tv%2Fnora%2Flogin%3Fgo%3D%2Fsubscribers%2F30069169&state=' . $GUID . '&response_mode=fragment&response_type=code&scope=openid&nonce='. $GUID);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+    curl_setopt($ch, CURLOPT_HEADER, 1);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json',
+        'accept-language: en-US,en;q=0.9',
+        'priority: u=1, i',
+        'referer: https://api.path.net/docs',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: empty',
+        'sec-fetch-mode: cors',
+        'sec-fetch-site: same-origin',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    ]);
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    $cookies1 = getCookies($response);
+
+    $tab = string_between_two_string($response, "tab_id=", "&");
+    $execId = string_between_two_string($response, "execution=", "&");
+    $sess = string_between_two_string($response, "session_code=", "&");
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://us-sso.norago.tv/realms/465/login-actions/authenticate?session_code=' . $sess . '&execution=' . $execId . '&client_id=NoraUI&tab_id=' . $tab);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+    curl_setopt($ch, CURLOPT_HEADER, 1);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'accept-language: en-US,en;q=0.9',
+        'cache-control: max-age=0',
+        'content-type: application/x-www-form-urlencoded',
+        'origin: null',
+        'priority: u=0, i',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: document',
+        'sec-fetch-mode: navigate',
+        'sec-fetch-site: same-origin',
+        'sec-fetch-user: ?1',
+        'upgrade-insecure-requests: 1',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'AUTH_SESSION_ID=' . $cookies1["AUTH_SESSION_ID"] . '; AUTH_SESSION_ID_LEGACY=' . $cookies1["AUTH_SESSION_ID_LEGACY"] . '; KC_RESTART=' . $cookies1["KC_RESTART"]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, 'username=admin%40usa.com&password=ABC123!!&credentialId=');
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    $cookies = getCookies($response);
+
+    if(!isset($cookies["KEYCLOAK_SESSION"])) {
+        NoraGoLogger::logError("convertTrialToCustomer", "authentication", "Failed to authenticate with NoraGO TV API", $response);
+        return NoraGoLogger::getSpecificError("convertTrialToCustomer", "authentication");
+    }
+
+    $testSir = explode("/", $cookies["KEYCLOAK_SESSION"]);
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/token');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json',
+        'accept-language: en-US,en;q=0.9',
+        'content-type: application/x-www-form-urlencoded',
+        'origin: https://freeworld.norago.tv',
+        'priority: u=1, i',
+        'referer: https://freeworld.norago.tv/',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: empty',
+        'sec-fetch-mode: cors',
+        'sec-fetch-site: same-origin',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, 'grant_type=authorization_code&client_id=NoraUI&redirect_uri=https%3A%2F%2Ffreeworld.norago.tv%2Fnora%2Flogin%3Fgo%3D%2Fsubscribers%2F' . $trialId . '&code=' . $testSir[4]);
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    $jsonResponseAuth = json_decode($response, true);
+
+    if(!isset($jsonResponseAuth["access_token"])) {
+        NoraGoLogger::logError("convertTrialToCustomer", "token_exchange", "Failed to get access token", $response);
+        return NoraGoLogger::getSpecificError("convertTrialToCustomer", "token_exchange");
+    }
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers/' . $trialId);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json, text/plain, */*',
+        'accept-language: en-US,en;q=0.9',
+        'authorization: Bearer ' . $jsonResponseAuth["access_token"],
+        'origin: https://freeworld.norago.tv',
+        'priority: u=1, i',
+        'referer: https://freeworld.norago.tv/nora/subscribers/' . $trialId . '/activation',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: empty',
+        'sec-fetch-mode: cors',
+        'sec-fetch-site: same-origin',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    ]);
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    $subscriberData = json_decode($response, true);
+
+    if(!isset($subscriberData["id"])) {
+        NoraGoLogger::logError("convertTrialToCustomer", "subscriber_fetch", "Failed to fetch subscriber data", $response);
+        return NoraGoLogger::getSpecificError("convertTrialToCustomer", "subscriber_fetch");
+    }
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers/' . $trialId . '/activation');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json, text/plain, */*',
+        'accept-language: en-US,en;q=0.9',
+        'authorization: Bearer ' . $jsonResponseAuth["access_token"],
+        'content-type: application/json;charset=UTF-8',
+        'origin: https://freeworld.norago.tv',
+        'priority: u=1, i',
+        'referer: https://freeworld.norago.tv/nora/subscribers/' . $trialId . '/activation',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: empty',
+        'sec-fetch-mode: cors',
+        'sec-fetch-site: same-origin',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"id":null,"status":false,"code":null,"codeExpirationTime":null,"subscriber":{"id":' . $trialId . ',"name":"' . $subscriberData["name"] . '","email":"' . $subscriberData["email"] . '","firstname":"' . $subscriberData["firstname"] . '","lastname":"' . $subscriberData["lastname"] . '","phone":"' . $subscriberData["phone"] . '","address":"' . $subscriberData["address"] . '","city":"' . $subscriberData["city"] . '","country":"' . $subscriberData["country"] . '","state":"' . $subscriberData["state"] . '","zipcode":"' . $subscriberData["zipcode"] . '","pincode":"' . $subscriberData["pincode"] . '","timeZone":"' . $subscriberData["timeZone"] . '","network":{"id":10000285},"type":"NORMAL"}}');
+
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if($http_code != 200 && $http_code != 201) {
+        NoraGoLogger::logError("convertTrialToCustomer", "subscriber_update", "Failed to update subscriber to customer type - HTTP " . $http_code, $response);
+        return NoraGoLogger::getSpecificError("convertTrialToCustomer", "subscriber_update");
+    }
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers/' . $trialId . '/payments');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json, text/plain, */*',
+        'accept-language: en-US,en;q=0.9',
+        'authorization: Bearer ' . $jsonResponseAuth["access_token"],
+        'content-type: application/json;charset=UTF-8',
+        'origin: https://freeworld.norago.tv',
+        'priority: u=1, i',
+        'referer: https://freeworld.norago.tv/nora/subscribers/' . $trialId . '/activation',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: empty',
+        'sec-fetch-mode: cors',
+        'sec-fetch-site: same-origin',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' . $trialId . ',"autoPay":false,"comment":null,"contentAddonsAutoPay":false,"devicesToPay":6,"length":30,"lengthType":"Days","override":true,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":210406315,"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}');
+
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if($http_code == 201 || $http_code == 200) {
+        NoraGoLogger::logSuccess("convertTrialToCustomer", "payment_creation", "30-day customer payment created successfully for trial " . $trialId);
+        return $trialId;
+    } else {
+        NoraGoLogger::logError("convertTrialToCustomer", "payment_creation", "Failed to create 30-day customer payment - HTTP " . $http_code, $response);
+        return NoraGoLogger::getSpecificError("convertTrialToCustomer", "payment_creation");
+    }
 }

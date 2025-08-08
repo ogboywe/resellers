@@ -48,9 +48,7 @@ function getCookies($curlResponse) {
 
 function extendAccount($userId) {
 
-
     $GUID = getGUID();
-    //echo $GUID;
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/auth?client_id=NoraUI&redirect_uri=https%3A%2F%2Ffreeworld.norago.tv%2Fnora%2Flogin%3Fgo%3D%2Fsubscribers%2F30069169&state=' . $GUID . '&response_mode=fragment&response_type=code&scope=openid&nonce='. $GUID);
@@ -72,28 +70,13 @@ function extendAccount($userId) {
     ]);
 
     $response = curl_exec($ch);
-
     curl_close($ch);
 
-    //echo $response;
-
-
     $cookies1 = getCookies($response);
-
-    //echo "\n==============================================\n";
 
     $tab = string_between_two_string($response, "tab_id=", "&");
     $execId = string_between_two_string($response, "execution=", "&");
     $sess = string_between_two_string($response, "session_code=", "&");
-
-
-    //echo $tab . "\n";
-    //echo $execId . "\n";
-    //echo $sess . "\n";
-
-    //echo "\n==============================================\n";
-
-    //sleep(9999);
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://us-sso.norago.tv/realms/465/login-actions/authenticate?session_code=' . $sess . '&execution=' . $execId . '&client_id=NoraUI&tab_id=' . $tab);
@@ -121,22 +104,13 @@ function extendAccount($userId) {
     curl_setopt($ch, CURLOPT_POSTFIELDS, 'username=admin%40usa.com&password=ABC123!!&credentialId=');
 
     $response = curl_exec($ch);
-
     curl_close($ch);
-
-    //echo $response;
 
     $cookies = getCookies($response);
 
-
     if(isset($cookies["KEYCLOAK_SESSION"])) {
-
-        //echo "Successfully logged-in!\n";
-
     } else {
-
         return "critical_error1";
-
     }
 
 
@@ -185,18 +159,19 @@ function extendAccount($userId) {
     curl_setopt($ch, CURLOPT_POSTFIELDS, trim($code) . '&grant_type=authorization_code&client_id=NoraUI&redirect_uri=https%3A%2F%2Ffreeworld.norago.tv%2Fnora%2Flogin%3Fgo%3D%2Fsubscribers%2F30069169');
 
     $response = curl_exec($ch);
-
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-
-    //echo $response;
 
     $cookies = getCookies($response);
 
     $jsonResponseAuth = json_decode($response, true);
 
-    //print_r($jsonResponseAuth);
+    if ($http_code != 200 || !$jsonResponseAuth || !isset($jsonResponseAuth["access_token"])) {
+        error_log("extendAccount: Token exchange failed - HTTP " . $http_code . ", Response: " . substr($response, 0, 200));
+        return "critical_error2";
+    }
 
-    //echo "\n==============================================\n";
+    error_log("extendAccount: Token exchange successful, access_token length: " . strlen($jsonResponseAuth["access_token"]));
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/info/timezone');
@@ -218,42 +193,15 @@ function extendAccount($userId) {
     ]);
 
     $response = curl_exec($ch);
-
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-
-
-
-    // get subscription id
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers/' . $userId . '/extra?activation');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'accept: application/json, text/plain, */*',
-        'accept-language: en-US,en;q=0.9',
-        'authorization: Bearer ' . $jsonResponseAuth["access_token"],
-        'priority: u=1, i',
-        'referer: https://freeworld.norago.tv/nora/subscribers/' . $userId . '/activation',
-        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
-        'sec-ch-ua-mobile: ?0',
-        'sec-ch-ua-platform: "Windows"',
-        'sec-fetch-dest: empty',
-        'sec-fetch-mode: cors',
-        'sec-fetch-site: same-origin',
-        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-    ]);
-
-    $response = curl_exec($ch);
-
-    curl_close($ch);
-
-    $jsonResponseSub = json_decode($response, true);
+    error_log("extendAccount: Timezone API call - HTTP " . $http_code);
 
 
 
 
+    
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers/' . $userId . '/payments');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -274,20 +222,20 @@ function extendAccount($userId) {
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' . $userId . ',"autoPay":false,"comment":null,"contentAddonsAutoPay":false,"devicesToPay":6,"length":1,"lengthType":"Months","override":false,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":' . $jsonResponseSub["currentSubscription"]["id"] . ',"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' . $userId . ',"autoPay":false,"comment":null,"contentAddonsAutoPay":false,"devicesToPay":6,"length":1,"lengthType":"Months","override":true,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":210406315,"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}');
 
     $response = curl_exec($ch);
-
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    error_log("extendAccount: Payment creation - HTTP " . $http_code . ", Response: " . substr($response, 0, 300));
+
     if(strpos($response, "paymentStatementId") !== false) {
-
+        error_log("extendAccount: Payment creation successful");
         return "success";
-
     } else {
-
+        error_log("extendAccount: Payment creation failed - no paymentStatementId found");
         return "unknown_error1";
-
     }
 
 
@@ -439,18 +387,19 @@ function generateAccount($email, $firstName, $lastName, $phoneNumber, $userPass)
     curl_setopt($ch, CURLOPT_POSTFIELDS, trim($code) . '&grant_type=authorization_code&client_id=NoraUI&redirect_uri=https%3A%2F%2Ffreeworld.norago.tv%2Fnora%2Flogin%3Fgo%3D%2Fsubscribers%2F30069169');
 
     $response = curl_exec($ch);
-
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-
-    //echo $response;
 
     $cookies = getCookies($response);
 
     $jsonResponseAuth = json_decode($response, true);
 
-    //print_r($jsonResponseAuth);
+    if ($http_code != 200 || !$jsonResponseAuth || !isset($jsonResponseAuth["access_token"])) {
+        error_log("extendAccount: Token exchange failed - HTTP " . $http_code . ", Response: " . substr($response, 0, 200));
+        return "critical_error2";
+    }
 
-    //echo "\n==============================================\n";
+    error_log("extendAccount: Token exchange successful, access_token length: " . strlen($jsonResponseAuth["access_token"]));
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/info/timezone');
@@ -472,8 +421,10 @@ function generateAccount($email, $firstName, $lastName, $phoneNumber, $userPass)
     ]);
 
     $response = curl_exec($ch);
-
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
+
+    error_log("extendAccount: Timezone API call - HTTP " . $http_code);
 
     //echo $response;
 
