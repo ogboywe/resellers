@@ -1,4 +1,5 @@
 <?php
+require_once 'error_logger.php';
 // Trial-specific functions for 1-day trial accounts
 // Note: Helper functions (getGUID, string_between_two_string, getCookies) are provided by funcs.php
 
@@ -458,23 +459,22 @@ function generateTrialAccount($email, $firstName, $lastName, $phoneNumber, $user
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"id":null,"name":"' . $last4 . '","accessoryNotes":[],"accountNumber":null,"address":"384","city":"2938","country":"US","creditCards":[],"currentPaymentStatement":null,"customChannels":[],"customVods":[],"dateOfBirth":null,"deleted":null,"devices":[],"deviceSlots":[],"email":"' . $email . '","enabled":null,"expirationTime":null,"firstname":"' . $firstName . '","foreignPlatformSubscriberId":"","hasUnlimitedSubscription":null,"language":null,"lastAccess":null,"lastname":"' . $lastName . '","network":{"id":10000285,"name":"VTV","backgroundColor":null,"categorySets":[],"customVideoUrl":null,"deviceCount":0,"hasAssignedAcl":null,"hasAvodSubscription":null,"listingType":"Sequence","multiorgEnabled":false,"multiorgId":null,"networkCatchupLinks":[],"networkChannelLinks":[],"networkThemeLinks":[],"pincode":"","platforms":null,"prefix":"VV","startChannelSettingsEnabled":null,"startChannelSettingsDto":[],"startPageType":null,"staticChannel":null,"screenSaverSettings":null,"subscriberCount":null,"subscribers":[],"timezone":null,"voucherSubscribersAllowed":false,"logoUrl":null,"apiAccessUser":null},"notes":[],"password":"' . $userPass . '","paymentStatements":[],"phone":"' . $phoneNumber . '","pincode":"1234","registered":null,"state":"","timeZone":"America/Grenada","user":null,"zipcode":"9238","tvsAccountNumber":null,"tvsAccountStartDate":null,"tvsThaiId":null,"type":null}');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"id":null,"name":"' . $last4 . '","email":"' . $email . '","firstname":"' . $firstName . '","lastname":"' . $lastName . '","phone":"' . $phoneNumber . '","password":"' . $userPass . '","address":"384","city":"2938","country":"US","state":"","zipcode":"9238","pincode":"1234","timeZone":"America/Grenada","network":{"id":10000285}}');
 
     $response = curl_exec($ch);
 
     curl_close($ch);
 
     if(strpos($response, "already exist") !== false) {
-
+        NoraGoLogger::logError("generateTrialAccount", "subscriber_creation", "User already exists", $response);
         return "already_exist";
 
     } elseif(strpos($response, 'externalId') !== false) {
-
-        //echo "Success creating user!";
+        NoraGoLogger::logSuccess("generateTrialAccount", "subscriber_creation", "Subscriber created successfully");
 
     } else {
-
-        return "unknown_error1";
+        NoraGoLogger::logError("generateTrialAccount", "subscriber_creation", "Failed to create subscriber", $response);
+        return NoraGoLogger::getSpecificError("generateTrialAccount", "subscriber_creation");
 
     }
 
@@ -700,11 +700,15 @@ function generateTrialAccount($email, $firstName, $lastName, $phoneNumber, $user
     curl_setopt($ch, CURLOPT_POSTFIELDS, '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' .  $id . ',"autoPay":false,"comment":null,"contentAddonsAutoPay":false,"devicesToPay":6,"length":1,"lengthType":"Days","override":true,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":210406315,"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}');
 
     $response = curl_exec($ch);
-
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    //echo $response;
-
-    return $id;
+    if($http_code == 201 || $http_code == 200) {
+        NoraGoLogger::logSuccess("generateTrialAccount", "payment_creation", "Trial payment created successfully for subscriber " . $id);
+        return $id;
+    } else {
+        NoraGoLogger::logError("generateTrialAccount", "payment_creation", "Failed to create trial payment - HTTP " . $http_code, $response);
+        return NoraGoLogger::getSpecificError("generateTrialAccount", "payment_creation");
+    }
 
 }
