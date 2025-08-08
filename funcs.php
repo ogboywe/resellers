@@ -201,45 +201,7 @@ function extendAccount($userId) {
 
 
 
-    // get subscription id
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers/' . $userId . '/extra?activation');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'accept: application/json, text/plain, */*',
-        'accept-language: en-US,en;q=0.9',
-        'authorization: Bearer ' . $jsonResponseAuth["access_token"],
-        'priority: u=1, i',
-        'referer: https://freeworld.norago.tv/nora/subscribers/' . $userId . '/activation',
-        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
-        'sec-ch-ua-mobile: ?0',
-        'sec-ch-ua-platform: "Windows"',
-        'sec-fetch-dest: empty',
-        'sec-fetch-mode: cors',
-        'sec-fetch-site: same-origin',
-        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-    ]);
-
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    error_log("extendAccount: Subscriber data fetch - HTTP " . $http_code . ", Response length: " . strlen($response));
-
-    $jsonResponseSub = json_decode($response, true);
-
-    if (!$jsonResponseSub || !isset($jsonResponseSub["currentSubscription"]["id"])) {
-        error_log("extendAccount: Failed to get subscription ID - Response: " . substr($response, 0, 300));
-        if ($http_code == 404) {
-            return "subscriber_not_found";
-        }
-        return "unknown_error1";
-    }
-
-    error_log("extendAccount: Subscription ID found: " . $jsonResponseSub["currentSubscription"]["id"]);
-
+    
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers/' . $userId . '/payments');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -260,7 +222,7 @@ function extendAccount($userId) {
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' . $userId . ',"autoPay":false,"comment":null,"contentAddonsAutoPay":false,"devicesToPay":6,"length":1,"lengthType":"Months","override":true,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":' . $jsonResponseSub["currentSubscription"]["id"] . ',"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' . $userId . ',"autoPay":false,"comment":null,"contentAddonsAutoPay":false,"devicesToPay":6,"length":1,"lengthType":"Months","override":true,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":210406315,"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}');
 
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
