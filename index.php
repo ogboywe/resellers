@@ -1266,9 +1266,9 @@ if (isset($_POST['convert_trial']) && isset($_POST['csrf_token']) && $_POST['csr
         require_once 'funcx.php';
         $result = convertTrialToCustomer($trial['subid']);
         
-        if ($result === "success") {
+        if (is_numeric($result)) {
             $customerData = [
-                'subid' => $trial['subid'],
+                'subid' => $result, // Use the actual NoraGO TV subscriber ID
                 'first_name' => $trial['first_name'],
                 'last_name' => $trial['last_name'],
                 'email' => $trial['email'],
@@ -1280,7 +1280,7 @@ if (isset($_POST['convert_trial']) && isset($_POST['csrf_token']) && $_POST['csr
                 'created_at' => date('Y-m-d H:i:s'),
                 'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days')),
                 'status' => 'active',
-                'notes' => 'Converted from trial account',
+                'notes' => 'Converted from trial account - NoraGO TV ID: ' . $result,
                 'last_modified' => date('Y-m-d H:i:s'),
                 'modified_by' => $_SESSION['user']
             ];
@@ -1302,10 +1302,20 @@ if (isset($_POST['convert_trial']) && isset($_POST['csrf_token']) && $_POST['csr
             $trials = [];
             $customers = [];
             
-            logActivity($_SESSION['user'], 'Convert Trial', "Converted trial account for {$trial['first_name']} {$trial['last_name']} to customer");
-            $success = "Trial account converted to customer successfully!";
+            logActivity($_SESSION['user'], 'Convert Trial', "Converted trial account for {$trial['first_name']} {$trial['last_name']} to customer with NoraGO TV ID: " . $result);
+            $success = "Trial account converted to customer successfully! NoraGO TV account created with ID: " . $result;
+        } elseif ($result === "already_exist") {
+            $error = "Account already exists in NoraGO TV system. Please check if this email is already registered.";
+        } elseif ($result === "auth_failed") {
+            $error = "Authentication failed with NoraGO TV API. Please contact administrator.";
+        } elseif ($result === "token_failed") {
+            $error = "Failed to obtain access token from NoraGO TV API. Please try again.";
+        } elseif ($result === "subscriber_creation_failed") {
+            $error = "Failed to create subscriber account in NoraGO TV API. Please try again.";
+        } elseif ($result === "trial_not_found") {
+            $error = "Trial account not found in database.";
         } else {
-            $error = "Failed to convert trial account. Please try again.";
+            $error = "Failed to convert trial account. Error: " . $result . ". Please try again.";
         }
     } else {
         $error = "Trial account not found or access denied";
