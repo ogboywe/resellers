@@ -1022,9 +1022,11 @@ if (isset($_POST['renew_customer']) && isset($_POST['csrf_token']) && $_POST['cs
             $renewResult = extendAccount($customer["subid"]);
 
             if($renewResult != "success") {
-
-                $error = "Unable to renew this user.";
-
+                if ($renewResult == "subscriber_not_found") {
+                    $error = "Unable to renew this user: Account not found in the system. Please contact support.";
+                } else {
+                    $error = "Unable to renew this user. Please try again or contact support.";
+                }
             } else {
 
                 // Calculate new expiration date from current expiration or today if expired
@@ -1051,6 +1053,55 @@ if (isset($_POST['renew_customer']) && isset($_POST['csrf_token']) && $_POST['cs
     
     if (!$customerFound) {
         $error = "Customer not found";
+    }
+}
+
+// Handle trial to customer conversion
+if (isset($_POST['convert_trial_to_customer']) && isset($_POST['csrf_token']) && $_POST['csrf_token'] === $_SESSION['csrf_token']) {
+    require_once 'funcx.php';
+    
+    $id = $_POST['trial_id'];
+    $trials = getTrials();
+    
+    $trialFound = false;
+    foreach ($trials as $trial) {
+        if ($trial['id'] == $id) {
+            $trialFound = true;
+
+            $convertResult = convertTrialToCustomer($trial["subid"]);
+
+            if($convertResult != $trial["subid"]) {
+                $error = "Unable to convert this trial to customer. Please try again.";
+            } else {
+                // Calculate new expiration date (30 days from today)
+                $newExpirationDate = date('Y-m-d H:i:s', time() + (30 * 24 * 60 * 60));
+                
+                addCustomer([
+                    'first_name' => $trial['first_name'],
+                    'last_name' => $trial['last_name'],
+                    'email' => $trial['email'],
+                    'phone' => $trial['phone'],
+                    'subid' => $trial['subid'],
+                    'expires_at' => $newExpirationDate,
+                    'status' => 'active',
+                    'notes' => $trial['notes'] . ' (Converted from trial)',
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'created_by' => $_SESSION['user'],
+                    'last_modified' => date('Y-m-d H:i:s'),
+                    'modified_by' => $_SESSION['user']
+                ]);
+
+                deleteTrial($id);
+
+                logActivity($_SESSION['user'], 'Convert Trial to Customer', "Converted trial account for {$trial['first_name']} {$trial['last_name']} to customer");
+                $success = "Trial account converted to customer successfully!";
+                break;
+            }
+        }
+    }
+    
+    if (!$trialFound) {
+        $error = "Trial account not found";
     }
 }
 
@@ -2152,6 +2203,11 @@ if (isset($_GET['toggle_theme'])) {
                                                         <button class="btn btn-sm btn-info" onclick="viewTrial(<?php echo $trial['id']; ?>)">
                                                             <i class="fas fa-eye"></i>
                                                         </button>
+                                                        <?php if ($trial['status'] === 'expired'): ?>
+                                                            <button class="btn btn-sm btn-success" onclick="convertTrialToCustomer(<?php echo $trial['id']; ?>)">
+                                                                <i class="fas fa-sync-alt"></i>
+                                                            </button>
+                                                        <?php endif; ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -2989,6 +3045,38 @@ if (isset($_GET['toggle_theme'])) {
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" onclick="closeModal('renew-customer-modal')">Cancel</button>
                                 <button type="submit" name="renew_customer" class="btn btn-success">Renew</button>
+                            </div>
+                        </form>
+                    `;
+                    
+                    document.getElementById('renew-customer-content').innerHTML = content;
+                    openModal('renew-customer-modal');
+                }
+            }
+            
+            function convertTrialToCustomer(id) {
+                const trials = <?php echo json_encode($trials); ?>;
+                let trial = null;
+                
+                for (let i = 0; i < trials.length; i++) {
+                    if (trials[i].id == id) {
+                        trial = trials[i];
+                        break;
+                    }
+                }
+                
+                if (trial) {
+                    const content = `
+                        <form method="post">
+                            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                            <input type="hidden" name="trial_id" value="${trial.id}">
+
+                            <p>Are you sure you want to convert the trial account for <strong>${trial.first_name} ${trial.last_name}</strong> to a customer account?</p>
+                            <p>This will create a 30-day subscription and move the account from trials to customers.</p>
+                            
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeModal('renew-customer-modal')">Cancel</button>
+                                <button type="submit" name="convert_trial_to_customer" class="btn btn-success">Convert to Customer</button>
                             </div>
                         </form>
                     `;
