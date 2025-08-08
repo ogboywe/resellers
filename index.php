@@ -591,6 +591,32 @@ function deleteReseller($username) {
     }
 }
 
+// Function to delete customer
+function deleteCustomer($customerId) {
+    global $conn, $customers;
+    
+    if ($conn) {
+        // Delete customer from database
+        $conn->query("DELETE FROM customers WHERE id = '" . $conn->real_escape_string($customerId) . "'");
+        
+        // Clear customers cache to force reload
+        $customers = [];
+        return true;
+    } else {
+        // Fallback to session storage
+        if (isset($_SESSION['customers'])) {
+            foreach ($_SESSION['customers'] as $key => $customer) {
+                if ($customer['id'] == $customerId) {
+                    unset($_SESSION['customers'][$key]);
+                    $_SESSION['customers'] = array_values($_SESSION['customers']); // Reindex array
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+}
+
 // Function to change user password
 function changePassword($username, $currentPassword, $newPassword) {
     global $conn, $users, $error;
@@ -1194,6 +1220,27 @@ if (isset($_POST['delete_reseller']) && isset($_POST['csrf_token']) && $_POST['c
         }
     } else {
         $error = "Reseller not found";
+    }
+}
+
+// Handle customer deletion (owner only)
+if (isset($_POST['delete_customer']) && isset($_POST['csrf_token']) && $_POST['csrf_token'] === $_SESSION['csrf_token'] && $_SESSION['role'] === 'owner') {
+    $customerId = sanitize($_POST['customer_id']);
+    $customers = getCustomers();
+    
+    $customerName = '';
+    foreach ($customers as $customer) {
+        if ($customer['id'] == $customerId) {
+            $customerName = $customer['first_name'] . ' ' . $customer['last_name'];
+            break;
+        }
+    }
+    
+    if (deleteCustomer($customerId)) {
+        logActivity($_SESSION['user'], 'Delete Customer', "Deleted customer account for {$customerName}");
+        $success = "Customer deleted successfully!";
+    } else {
+        $error = "Failed to delete customer";
     }
 }
 
@@ -1810,7 +1857,12 @@ if (isset($_GET['toggle_theme'])) {
                                                                         <i class="fas fa-sync-alt"></i>
                                                                     </button>
                                                                 <?php endif; ?>
-                            
+                                                            
+                                                            <?php if ($_SESSION['role'] === 'owner'): ?>
+                                                                <button class="btn btn-sm btn-danger" onclick="deleteCustomer(<?php echo $customer['id']; ?>)">
+                                                                    <i class="fas fa-trash"></i>
+                                                                </button>
+                                                            <?php endif; ?>
                                                             <?php endif; ?>
                                                         </div>
                                                     </td>
@@ -2995,6 +3047,38 @@ if (isset($_GET['toggle_theme'])) {
                     
                     document.getElementById('renew-customer-content').innerHTML = content;
                     openModal('renew-customer-modal');
+                }
+            }
+            
+            function deleteCustomer(id) {
+                const customers = <?php echo json_encode($customers); ?>;
+                let customer = null;
+                
+                for (let i = 0; i < customers.length; i++) {
+                    if (customers[i].id == id) {
+                        customer = customers[i];
+                        break;
+                    }
+                }
+                
+                if (customer) {
+                    const content = `
+                        <form method="post">
+                            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                            <input type="hidden" name="customer_id" value="${customer.id}">
+                            
+                            <p>Are you sure you want to delete the customer <strong>${customer.first_name} ${customer.last_name}</strong>?</p>
+                            <p class="text-danger">This action cannot be undone! All customer data will be permanently removed.</p>
+                            
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeModal('delete-customer-modal')">Cancel</button>
+                                <button type="submit" name="delete_customer" class="btn btn-danger">Delete Customer</button>
+                            </div>
+                        </form>
+                    `;
+                    
+                    document.getElementById('delete-customer-content').innerHTML = content;
+                    openModal('delete-customer-modal');
                 }
             }
             
