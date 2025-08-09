@@ -873,10 +873,10 @@ function convertTrialToCustomer($trialId) {
         return "token_failed";
     }
 
-    error_log("convertTrialToCustomer: Successfully obtained access token");
+    error_log("convertTrialToCustomer: Successfully obtained access token, creating new subscriber");
 
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers/' . $trialSubId . '/payments');
+    curl_setopt($ch, CURLOPT_URL, 'https://freeworld.norago.tv/nora/api/subscribers');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
@@ -886,7 +886,7 @@ function convertTrialToCustomer($trialId) {
         'content-type: application/json;charset=UTF-8',
         'origin: https://freeworld.norago.tv',
         'priority: u=1, i',
-        'referer: https://freeworld.norago.tv/nora/subscribers/' . $trialSubId . '/activation',
+        'referer: https://freeworld.norago.tv/nora/subscribers/new',
         'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
         'sec-ch-ua-mobile: ?0',
         'sec-ch-ua-platform: "Windows"',
@@ -895,20 +895,28 @@ function convertTrialToCustomer($trialId) {
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' . $trialSubId . ',"autoPay":false,"comment":null,"contentAddonsAutoPay":false,"devicesToPay":6,"length":1,"lengthType":"Months","override":true,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":210406315,"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"firstName":"' . $trial['first_name'] . '","lastName":"' . $trial['last_name'] . '","email":"' . $trial['email'] . '","phone":"' . $trial['phone'] . '","username":"' . $trial['username'] . '","password":"' . $trial['password'] . '","confirmPassword":"' . $trial['password'] . '","organizationId":465,"distributorId":null,"externalId":"' . $trial['username'] . '","notes":"Converted from trial account","status":"ACTIVE","subscriptions":[{"subscriptionId":210406315,"length":1,"lengthType":"Months","price":0,"paymentType":"Custom_Subscription","currencyId":14001,"devicesToPay":6,"autoPay":false,"override":true,"prorateToUpcoming":true,"prorateSubscription":false,"paymentSystemType":"CASH","approvalRequired":false,"currencyConverterType":"FIXER_IO","contentAddonsAutoPay":false,"accessoryIds":[]}]}');
 
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    error_log("convertTrialToCustomer: Payment update HTTP code: " . $http_code);
-    error_log("convertTrialToCustomer: Payment update response: " . substr($response, 0, 500));
+    error_log("convertTrialToCustomer: Subscriber creation HTTP code: " . $http_code);
+    error_log("convertTrialToCustomer: Subscriber creation response: " . substr($response, 0, 500));
 
-    if ($http_code !== 200 && $http_code !== 201) {
-        error_log("convertTrialToCustomer: Payment update failed with HTTP code: " . $http_code);
-        return "payment_update_failed";
+    if(strpos($response, "already exist") !== false) {
+        error_log("convertTrialToCustomer: Account already exists in NoraGO TV");
+        return "already_exist";
+    } elseif(strpos($response, 'externalId') !== false) {
+        error_log("convertTrialToCustomer: Successfully created subscriber in NoraGO TV");
+        $responseData = json_decode($response, true);
+        if (isset($responseData['id'])) {
+            return $responseData['id'];
+        } else {
+            return $trialSubId;
+        }
+    } else {
+        error_log("convertTrialToCustomer: Failed to create subscriber - no externalId found in response");
+        return "subscriber_creation_failed";
     }
-
-    error_log("convertTrialToCustomer: Successfully converted trial to customer in NoraGO TV API");
-    return $trialSubId;
 }
