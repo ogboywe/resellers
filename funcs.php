@@ -120,23 +120,24 @@ function extendAccount($userId) {
     curl_setopt($ch, CURLOPT_COOKIE, 'AUTH_SESSION_ID=' . $cookies1["AUTH_SESSION_ID"] . '; AUTH_SESSION_ID_LEGACY=' . $cookies1["AUTH_SESSION_ID_LEGACY"] . '; KC_RESTART=' . $cookies1["KC_RESTART"]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, 'username=admin%40usa.com&password=ABC123!!&credentialId=');
 
+    error_log("OAuth: Sending authentication request with credentials admin@usa.com");
+
     $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
     curl_close($ch);
 
-    //echo $response;
+    error_log("OAuth: Authentication request HTTP code: " . $http_code);
+    error_log("OAuth: Authentication response length: " . strlen($response));
+    error_log("OAuth: Authentication response preview: " . substr($response, 0, 500));
 
     $cookies = getCookies($response);
-
+    error_log("OAuth: Authentication cookies received: " . print_r($cookies, true));
 
     if(isset($cookies["KEYCLOAK_SESSION"])) {
-
-        //echo "Successfully logged-in!\n";
-
     } else {
-
-        return "critical_error1";
-
+        error_log("OAuth authentication failed - HTTP code: " . $http_code);
+        return "auth_failed";
     }
 
 
@@ -305,6 +306,7 @@ function generateAccount($email, $firstName, $lastName, $phoneNumber, $userPass)
 
     $GUID = getGUID();
     //echo $GUID;
+    error_log("generateAccount: Starting OAuth flow for email: " . $email);
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/auth?client_id=NoraUI&redirect_uri=https%3A%2F%2Ffreeworld.norago.tv%2Fnora%2Flogin%3Fgo%3D%2Fsubscribers%2F30069169&state=' . $GUID . '&response_mode=fragment&response_type=code&scope=openid&nonce='. $GUID);
@@ -312,33 +314,36 @@ function generateAccount($email, $firstName, $lastName, $phoneNumber, $userPass)
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
     curl_setopt($ch, CURLOPT_HEADER, 1);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'accept: application/json',
+        'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'accept-language: en-US,en;q=0.9',
-        'priority: u=1, i',
-        'referer: https://api.path.net/docs',
+        'cache-control: max-age=0',
         'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
         'sec-ch-ua-mobile: ?0',
         'sec-ch-ua-platform: "Windows"',
-        'sec-fetch-dest: empty',
-        'sec-fetch-mode: cors',
-        'sec-fetch-site: same-origin',
+        'sec-fetch-dest: document',
+        'sec-fetch-mode: navigate',
+        'sec-fetch-site: none',
+        'sec-fetch-user: ?1',
+        'upgrade-insecure-requests: 1',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     ]);
 
     $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
     curl_close($ch);
 
-    //echo $response;
-
+    error_log("generateAccount: Initial OAuth request HTTP code: " . $http_code);
+    error_log("generateAccount: Initial OAuth response length: " . strlen($response));
 
     $cookies1 = getCookies($response);
-
-    //echo "\n==============================================\n";
+    error_log("generateAccount: Initial cookies received: " . print_r($cookies1, true));
 
     $tab = string_between_two_string($response, "tab_id=", "&");
     $execId = string_between_two_string($response, "execution=", "&");
     $sess = string_between_two_string($response, "session_code=", "&");
+    
+    error_log("generateAccount: Session parameters - tab_id: " . $tab . ", execution: " . $execId . ", session_code: " . $sess);
 
 
     //echo $tab . "\n";
@@ -374,23 +379,24 @@ function generateAccount($email, $firstName, $lastName, $phoneNumber, $userPass)
     curl_setopt($ch, CURLOPT_COOKIE, 'AUTH_SESSION_ID=' . $cookies1["AUTH_SESSION_ID"] . '; AUTH_SESSION_ID_LEGACY=' . $cookies1["AUTH_SESSION_ID_LEGACY"] . '; KC_RESTART=' . $cookies1["KC_RESTART"]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, 'username=admin%40usa.com&password=ABC123!!&credentialId=');
 
+    error_log("OAuth: Sending authentication request with credentials admin@usa.com");
+
     $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
     curl_close($ch);
 
-    //echo $response;
+    error_log("OAuth: Authentication request HTTP code: " . $http_code);
+    error_log("OAuth: Authentication response length: " . strlen($response));
+    error_log("OAuth: Authentication response preview: " . substr($response, 0, 500));
 
     $cookies = getCookies($response);
-
+    error_log("OAuth: Authentication cookies received: " . print_r($cookies, true));
 
     if(isset($cookies["KEYCLOAK_SESSION"])) {
-
-        //echo "Successfully logged-in!\n";
-
     } else {
-
-        return "critical_error1";
-
+        error_log("OAuth authentication failed - HTTP code: " . $http_code);
+        return "auth_failed";
     }
 
 
@@ -502,11 +508,16 @@ function generateAccount($email, $firstName, $lastName, $phoneNumber, $userPass)
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"id":null,"name":"' . $last4 . '","accessoryNotes":[],"accountNumber":null,"address":"384","city":"2938","country":"US","creditCards":[],"currentPaymentStatement":null,"customChannels":[],"customVods":[],"dateOfBirth":null,"deleted":null,"devices":[],"deviceSlots":[],"email":"' . $email . '","enabled":null,"expirationTime":null,"firstname":"' . $firstName . '","foreignPlatformSubscriberId":"","hasUnlimitedSubscription":null,"language":null,"lastAccess":null,"lastname":"' . $lastName . '","network":{"id":10000285,"name":"VTV","backgroundColor":null,"categorySets":[],"customVideoUrl":null,"deviceCount":0,"hasAssignedAcl":null,"hasAvodSubscription":null,"listingType":"Sequence","multiorgEnabled":false,"multiorgId":null,"networkCatchupLinks":[],"networkChannelLinks":[],"networkThemeLinks":[],"pincode":"","platforms":null,"prefix":"VV","startChannelSettingsEnabled":null,"startChannelSettingsDto":[],"startPageType":null,"staticChannel":null,"screenSaverSettings":null,"subscriberCount":null,"subscribers":[],"timezone":null,"voucherSubscribersAllowed":false,"logoUrl":null,"apiAccessUser":null},"notes":[],"password":"' . $userPass . '","paymentStatements":[],"phone":"' . $phoneNumber . '","pincode":"1234","registered":null,"state":"","timeZone":"America/Grenada","user":null,"zipcode":"9238","tvsAccountNumber":null,"tvsAccountStartDate":null,"tvsThaiId":null,"type":null}');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"id":null,"name":"' . $last4 . '","accessoryNotes":[],"accountNumber":null,"address":"384","city":"2938","country":"US","creditCards":[],"currentPaymentStatement":null,"customChannels":[],"customVods":[],"dateOfBirth":null,"deleted":null,"devices":[],"deviceSlots":[],"email":"' . $email . '","enabled":null,"expirationTime":null,"firstname":"' . $firstName . '","hasUnlimitedSubscription":null,"language":null,"lastAccess":null,"lastname":"' . $lastName . '","network":{"id":10000285,"name":"VTV","backgroundColor":null,"categorySets":[],"customVideoUrl":null,"deviceCount":0,"hasAssignedAcl":null,"hasAvodSubscription":null,"listingType":"Sequence","multiorgEnabled":false,"multiorgId":null,"networkCatchupLinks":[],"networkChannelLinks":[],"networkThemeLinks":[],"pincode":"","platforms":null,"prefix":"VV","startChannelSettingsEnabled":null,"startChannelSettingsDto":[],"startPageType":null,"staticChannel":null,"screenSaverSettings":null,"subscriberCount":null,"subscribers":[],"timezone":null,"voucherSubscribersAllowed":false,"logoUrl":null,"apiAccessUser":null},"notes":[],"password":"' . $userPass . '","paymentStatements":[],"phone":"' . $phoneNumber . '","pincode":"1234","registered":null,"state":"","timeZone":"America/Grenada","user":null,"zipcode":"9238","tvsAccountNumber":null,"tvsAccountStartDate":null,"tvsThaiId":null,"type":null}');
 
     $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
     curl_close($ch);
+
+    error_log("generateAccount: User creation API HTTP code: " . $http_code);
+    error_log("generateAccount: User creation response length: " . strlen($response));
+    error_log("generateAccount: User creation response preview: " . substr($response, 0, 500));
 
     if(strpos($response, "already exist") !== false) {
 
@@ -514,11 +525,17 @@ function generateAccount($email, $firstName, $lastName, $phoneNumber, $userPass)
 
     } elseif(strpos($response, 'externalId') !== false) {
 
-        //echo "Success creating user!";
 
     } else {
 
-        return "unknown_error1";
+        error_log("generateAccount: User creation failed for " . $email . " - HTTP code: " . $http_code);
+        if($http_code == 400) {
+            return "invalid_request";
+        } elseif($http_code == 401) {
+            return "token_failed";
+        } else {
+            return "subscriber_creation_failed";
+        }
 
     }
 
