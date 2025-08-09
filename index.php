@@ -1249,6 +1249,81 @@ if (isset($_POST['change_password']) && isset($_POST['csrf_token']) && $_POST['c
     }
 }
 
+// Handle trial to customer conversion (reseller only)
+if (isset($_POST['convert_trial']) && isset($_POST['csrf_token']) && $_POST['csrf_token'] === $_SESSION['csrf_token'] && $_SESSION['role'] === 'reseller') {
+    $trialId = sanitize($_POST['trial_id']);
+    $trials = getTrials();
+    
+    $trial = null;
+    foreach ($trials as $t) {
+        if ($t['id'] == $trialId && $t['created_by'] === $_SESSION['user']) {
+            $trial = $t;
+            break;
+        }
+    }
+    
+    if ($trial) {
+        require_once 'funcx.php';
+        $result = convertTrialToCustomer($trial['subid']);
+        
+        if (is_numeric($result)) {
+            $customerData = [
+                'subid' => $result, // Use the actual NoraGO TV subscriber ID
+                'first_name' => $trial['first_name'],
+                'last_name' => $trial['last_name'],
+                'email' => $trial['email'],
+                'phone' => $trial['phone'],
+                'username' => $trial['username'],
+                'password' => $trial['password'],
+                'provider_id' => $trial['provider_id'],
+                'created_by' => $trial['created_by'],
+                'created_at' => date('Y-m-d H:i:s'),
+                'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days')),
+                'status' => 'active',
+                'notes' => 'Converted from trial account - NoraGO TV ID: ' . $result,
+                'last_modified' => date('Y-m-d H:i:s'),
+                'modified_by' => $_SESSION['user']
+            ];
+            
+            createCustomer($customerData);
+            
+            if ($conn) {
+                $conn->query("DELETE FROM trial WHERE id = " . (int)$trialId);
+            } else {
+                foreach ($_SESSION['trials'] as $key => $sessionTrial) {
+                    if ($sessionTrial['id'] == $trialId) {
+                        unset($_SESSION['trials'][$key]);
+                        $_SESSION['trials'] = array_values($_SESSION['trials']);
+                        break;
+                    }
+                }
+            }
+            
+            $trials = [];
+            $customers = [];
+            
+            logActivity($_SESSION['user'], 'Convert Trial', "Converted trial account for {$trial['first_name']} {$trial['last_name']} to customer with NoraGO TV ID: " . $result);
+            $success = "Trial account converted to customer successfully! NoraGO TV account created with ID: " . $result;
+        } elseif ($result === "already_exist") {
+            $error = "Account already exists in NoraGO TV system. Please check if this email is already registered.";
+        } elseif ($result === "auth_failed") {
+            $error = "Authentication failed with NoraGO TV API. Please contact administrator.";
+        } elseif ($result === "token_failed") {
+            $error = "Failed to obtain access token from NoraGO TV API. Please try again.";
+        } elseif ($result === "payment_update_failed") {
+            $error = "Failed to update subscription in NoraGO TV API. Please try again.";
+        } elseif ($result === "subscriber_creation_failed") {
+            $error = "Failed to create subscriber account in NoraGO TV API. Please try again.";
+        } elseif ($result === "trial_not_found") {
+            $error = "Trial account not found in database.";
+        } else {
+            $error = "Failed to convert trial account. Error: " . $result . ". Please try again.";
+        }
+    } else {
+        $error = "Trial account not found or access denied";
+    }
+}
+
 // Handle mark notification as read
 if (isset($_GET['mark_read']) && $_SESSION['role'] === 'owner') {
     $id = $_GET['mark_read'];
@@ -2152,6 +2227,9 @@ if (isset($_GET['toggle_theme'])) {
                                                         <button class="btn btn-sm btn-info" onclick="viewTrial(<?php echo $trial['id']; ?>)">
                                                             <i class="fas fa-eye"></i>
                                                         </button>
+                                                        <button class="btn btn-sm btn-success" onclick="convertTrialToCustomer(<?php echo $trial['id']; ?>)">
+                                                            <i class="fas fa-user-plus"></i>
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -2607,6 +2685,19 @@ if (isset($_GET['toggle_theme'])) {
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('view-trial-modal')">Close</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Convert Trial Modal -->
+        <div id="convert-trial-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4>Convert Trial to Customer</h4>
+                    <button type="button" class="close" onclick="closeModal('convert-trial-modal')">&times;</button>
+                </div>
+                <div class="modal-body" id="convert-trial-content">
+                    <!-- Content will be loaded dynamically -->
                 </div>
             </div>
         </div>
@@ -3097,6 +3188,43 @@ if (isset($_GET['toggle_theme'])) {
                     
                     document.getElementById('view-trial-content').innerHTML = content;
                     openModal('view-trial-modal');
+                }
+            }
+            
+            function convertTrialToCustomer(id) {
+                const trials = <?php echo json_encode($trials); ?>;
+                let trial = null;
+                
+                for (let i = 0; i < trials.length; i++) {
+                    if (trials[i].id == id) {
+                        trial = trials[i];
+                        break;
+                    }
+                }
+                
+                if (trial) {
+                    const content = `
+                        <form method="post">
+                            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                            <input type="hidden" name="trial_id" value="${trial.id}">
+                            
+                            <p>Convert trial account <strong>${trial.first_name} ${trial.last_name}</strong> to a regular customer?</p>
+                            <p>This will:</p>
+                            <ul>
+                                <li>Convert the trial to a 30-day customer account</li>
+                                <li>Move the account from trials to customers section</li>
+                                <li>Activate the account immediately</li>
+                            </ul>
+                            
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeModal('convert-trial-modal')">Cancel</button>
+                                <button type="submit" name="convert_trial" class="btn btn-success">Convert to Customer</button>
+                            </div>
+                        </form>
+                    `;
+                    
+                    document.getElementById('convert-trial-content').innerHTML = content;
+                    openModal('convert-trial-modal');
                 }
             }
             
