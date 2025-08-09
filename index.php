@@ -1310,6 +1310,8 @@ if (isset($_POST['convert_trial']) && isset($_POST['csrf_token']) && $_POST['csr
             $error = "Authentication failed with NoraGO TV API. Please contact administrator.";
         } elseif ($result === "token_failed") {
             $error = "Failed to obtain access token from NoraGO TV API. Please try again.";
+        } elseif ($result === "payment_update_failed") {
+            $error = "Failed to update subscription in NoraGO TV API. Please try again.";
         } elseif ($result === "subscriber_creation_failed") {
             $error = "Failed to create subscriber account in NoraGO TV API. Please try again.";
         } elseif ($result === "trial_not_found") {
