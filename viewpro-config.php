@@ -3,7 +3,7 @@
 $viewpro_db_config = [
     'host' => 'localhost',
     'username' => 'root',
-    'password' => $_ENV['VIEWPRO_DB_PASSWORD'] ?? 'your_db_password_here',
+    'password' => $_ENV['VIEWPRO_DB_PASSWORD'] ?? '',
     'database' => 'ViewPro'
 ];
 
@@ -11,18 +11,18 @@ $email_config = [
     'smtp_host' => 'smtp.gmail.com',
     'smtp_port' => 587,
     'smtp_username' => 'noreply@viewproplus.com',
-    'smtp_password' => $_ENV['VIEWPRO_SMTP_PASSWORD'] ?? 'your_smtp_password_here',
+    'smtp_password' => $_ENV['VIEWPRO_SMTP_PASSWORD'] ?? '',
     'from_email' => 'noreply@viewproplus.com',
     'from_name' => 'ViewProPlus',
     'use_smtp' => false // Set to true when SMTP credentials are configured
 ];
 
 $norago_api_config = [
-    'base_url' => 'https://us-sso.norago.tv',
+    'base_url' => 'https://freeworld.norago.tv',
     'auth_url' => 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/auth',
     'login_url' => 'https://us-sso.norago.tv/realms/465/login-actions/authenticate',
-    'username' => $_ENV['NORAGO_API_USERNAME'] ?? 'your_api_username_here',
-    'password' => $_ENV['NORAGO_API_PASSWORD'] ?? 'your_api_password_here',
+    'username' => $_ENV['NORAGO_API_USERNAME'] ?? '',
+    'password' => $_ENV['NORAGO_API_PASSWORD'] ?? '',
     'network_id' => 10000285,
     'network_prefix' => 'VV'
 ];
