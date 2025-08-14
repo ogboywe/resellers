@@ -2,8 +2,8 @@
 
 $viewpro_db_config = [
     'host' => 'localhost',
-    'username' => 'root',
-    'password' => 'L9cr2RafX0K7bPWyk1mw0zi2',
+    'username' => 'debian-sys-maint',
+    'password' => 'TWcMEARZHKapmVhX',
     'database' => 'ViewPro'
 ];
 
@@ -49,7 +49,9 @@ function getViewProConnection() {
             $viewpro_db_config['host'],
             $viewpro_db_config['username'],
             $viewpro_db_config['password'],
-            $viewpro_db_config['database']
+            $viewpro_db_config['database'],
+            3306,
+            '/var/run/mysqld/mysqld.sock'
         );
         
         if ($conn->connect_error) {

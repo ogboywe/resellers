@@ -160,10 +160,6 @@ function authenticateWithNoraGO() {
     curl_setopt($ch, CURLOPT_URL, 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/token');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-    curl_setopt($ch, CURLOPT_HEADER, 1);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'accept: */*',
         'accept-language: en-US,en;q=0.9',
@@ -183,23 +179,11 @@ function authenticateWithNoraGO() {
     curl_setopt($ch, CURLOPT_POSTFIELDS, trim($code) . '&grant_type=authorization_code&client_id=NoraUI&redirect_uri=https%3A%2F%2Ffreeworld.norago.tv%2Fnora%2Flogin%3Fgo%3D%2Fsubscribers%2F30069169');
 
     $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    error_log("ViewPro: Token exchange HTTP code: " . $http_code);
     error_log("ViewPro: Token exchange response: " . substr($response, 0, 500));
-
-    $cookies = getCookies($response);
     
-    $headerEndPos = strpos($response, "\r\n\r\n");
-    if ($headerEndPos !== false) {
-        $jsonBody = substr($response, $headerEndPos + 4);
-    } else {
-        $jsonBody = $response;
-    }
-    
-    error_log("ViewPro: JSON body extracted: " . substr($jsonBody, 0, 200));
-    $jsonResponseAuth = json_decode($jsonBody, true);
+    $jsonResponseAuth = json_decode($response, true);
     
     error_log("ViewPro: JSON decode result: " . ($jsonResponseAuth ? "SUCCESS" : "FAILED"));
     error_log("ViewPro: Access token present: " . (isset($jsonResponseAuth["access_token"]) ? "YES" : "NO"));
@@ -209,7 +193,35 @@ function authenticateWithNoraGO() {
         return "token_failed";
     }
 
-    $jsonResponseAuth["xsrf_token"] = isset($cookies["XSRF-TOKEN"]) ? $cookies["XSRF-TOKEN"] : null;
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/subscribers');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+    curl_setopt($ch, CURLOPT_HEADER, 1);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'accept-language: en-US,en;q=0.9',
+        'authorization: Bearer ' . $jsonResponseAuth["access_token"],
+        'priority: u=0, i',
+        'referer: ' . $norago_api_config['base_url'] . '/nora/login?go=%2Fsubscribers',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: document',
+        'sec-fetch-mode: navigate',
+        'sec-fetch-site: same-origin',
+        'sec-fetch-user: ?1',
+        'upgrade-insecure-requests: 1',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    ]);
+
+    $response = curl_exec($ch);
+    curl_close($ch);
+    
+    $cookies = getCookies($response);
+    $xsrfToken = isset($cookies["XSRF-TOKEN"]) ? $cookies["XSRF-TOKEN"] : null;
+    
+    $jsonResponseAuth["xsrf_token"] = $xsrfToken;
     
     error_log("ViewPro: Successfully authenticated with NoraGO TV - Access Token: " . substr($jsonResponseAuth["access_token"], 0, 20) . "...");
     error_log("ViewPro: XSRF Token: " . ($jsonResponseAuth["xsrf_token"] ? substr($jsonResponseAuth["xsrf_token"], 0, 20) . "..." : "NULL"));
@@ -228,11 +240,13 @@ function createViewProTrial($email, $firstName, $lastName, $phoneNumber) {
     }
     
     $accessToken = $authResult["access_token"];
+    $xsrfToken = $authResult["xsrf_token"];
     $username = generateRandomUsername('vp');
     $password = generateRandomPassword();
     
     error_log("ViewPro: Starting subscriber creation API call for " . $email);
     error_log("ViewPro: Generated username: " . $username . ", password: " . $password);
+    error_log("ViewPro: Using XSRF Token: " . ($xsrfToken ? substr($xsrfToken, 0, 20) . "..." : "NULL"));
     
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers');
@@ -254,7 +268,9 @@ function createViewProTrial($email, $firstName, $lastName, $phoneNumber) {
         'sec-fetch-mode: cors',
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
     ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
     
     $payload = json_encode([
         "id" => null,
@@ -334,14 +350,25 @@ function createViewProTrial($email, $firstName, $lastName, $phoneNumber) {
     error_log("ViewPro: Trial creation HTTP code: " . $http_code);
     error_log("ViewPro: Trial creation response: " . substr($response, 0, 500));
     
-    if (strpos($response, "already exist") !== false) {
+    $cookies = getCookies($response);
+    $xsrfToken = isset($cookies["XSRF-TOKEN"]) ? $cookies["XSRF-TOKEN"] : null;
+    error_log("ViewPro: XSRF Token extracted from subscriber creation: " . ($xsrfToken ? substr($xsrfToken, 0, 20) . "..." : "NULL"));
+    
+    $headerEndPos = strpos($response, "\r\n\r\n");
+    if ($headerEndPos !== false) {
+        $responseBody = substr($response, $headerEndPos + 4);
+    } else {
+        $responseBody = $response;
+    }
+    
+    if (strpos($responseBody, "already exist") !== false) {
         return "already_exist";
-    } elseif (strpos($response, 'externalId') === false) {
+    } elseif (strpos($responseBody, 'externalId') === false) {
         error_log("ViewPro: Trial creation failed - HTTP code: " . $http_code);
         return "subscriber_creation_failed";
     }
 
-    preg_match('/"externalId":"([^"]+)"/', $response, $matches);
+    preg_match('/"externalId":"([^"]+)"/', $responseBody, $matches);
     if (!isset($matches[1])) {
         error_log("ViewPro: Failed to extract subscriber ID");
         return "subscriber_creation_failed";
@@ -367,7 +394,9 @@ function createViewProTrial($email, $firstName, $lastName, $phoneNumber) {
         'sec-fetch-mode: cors',
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
     ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
     
     $paymentPayload = json_encode([
         "approvalRequired" => false,
@@ -422,7 +451,9 @@ function createViewProTrial($email, $firstName, $lastName, $phoneNumber) {
         'sec-fetch-mode: cors',
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
     ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
 
     $response = curl_exec($ch);
     curl_close($ch);
@@ -599,11 +630,13 @@ function createViewProSubscription($email, $firstName, $lastName, $phoneNumber) 
     }
     
     $accessToken = $authResult["access_token"];
+    $xsrfToken = $authResult["xsrf_token"];
     $username = generateRandomUsername('vp');
     $password = generateRandomPassword();
     
     error_log("ViewPro: Starting subscriber creation API call for " . $email);
     error_log("ViewPro: Generated username: " . $username . ", password: " . $password);
+    error_log("ViewPro: Using XSRF Token: " . ($xsrfToken ? substr($xsrfToken, 0, 20) . "..." : "NULL"));
     
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers');
@@ -625,7 +658,9 @@ function createViewProSubscription($email, $firstName, $lastName, $phoneNumber) 
         'sec-fetch-mode: cors',
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
     ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
     
     $payload = json_encode([
         "id" => null,
@@ -711,7 +746,7 @@ function createViewProSubscription($email, $firstName, $lastName, $phoneNumber) 
         return "subscriber_creation_failed";
     }
 
-    preg_match('/"externalId":"([^"]+)"/', $response, $matches);
+    preg_match('/"externalId":"([^"]+)"/', $responseBody, $matches);
     if (!isset($matches[1])) {
         error_log("ViewPro: Failed to extract subscriber ID");
         return "subscriber_creation_failed";
@@ -737,7 +772,9 @@ function createViewProSubscription($email, $firstName, $lastName, $phoneNumber) 
         'sec-fetch-mode: cors',
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
     ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
     
     $paymentPayload = json_encode([
         "approvalRequired" => false,
@@ -792,7 +829,9 @@ function createViewProSubscription($email, $firstName, $lastName, $phoneNumber) 
         'sec-fetch-mode: cors',
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
     ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
 
     $response = curl_exec($ch);
     curl_close($ch);
@@ -889,7 +928,9 @@ function renewViewProAccount($subscriberId) {
         'sec-fetch-mode: cors',
         'sec-fetch-site: same-origin',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
     ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
     
     $paymentPayload = json_encode([
         "approvalRequired" => false,
@@ -936,58 +977,79 @@ function renewViewProAccount($subscriberId) {
 }
 
 function saveViewProUser($email, $firstName, $lastName, $phone, $username, $password, $subscriberId, $accountType, $referredBy = null) {
-    error_log("ViewPro: Saving user data for " . $email . " (username: " . $username . ")");
-    return rand(1000, 9999);
+    error_log("ViewPro: Saving user data for " . $email . " (username: " . $username . ", subscriber ID: " . $subscriberId . ")");
+    
+    $conn = getViewProConnection();
+    if (!$conn) {
+        error_log("ViewPro: Database connection failed for user save");
+        return false;
+    }
+    
+    $expiresAt = date('Y-m-d H:i:s', strtotime('+30 days'));
+    if ($accountType === 'trial') {
+        $expiresAt = date('Y-m-d H:i:s', strtotime('+1 day'));
+    }
+    
+    $stmt = $conn->prepare("INSERT INTO accounts (email, first_name, last_name, phone, username, password, norago_subid, account_type, expires_at, created_at, referred_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)");
+    if (!$stmt) {
+        error_log("ViewPro: Failed to prepare insert statement: " . $conn->error);
+        $conn->close();
+        return false;
+    }
+    
+    $stmt->bind_param("ssssssssss", $email, $firstName, $lastName, $phone, $username, $password, $subscriberId, $accountType, $expiresAt, $referredBy);
+    
+    if ($stmt->execute()) {
+        $userId = $conn->insert_id;
+        error_log("ViewPro: Successfully saved user with ID: " . $userId . " and subscriber ID: " . $subscriberId);
+        $stmt->close();
+        $conn->close();
+        return $userId;
+    } else {
+        error_log("ViewPro: Failed to save user: " . $stmt->error);
+        $stmt->close();
+        $conn->close();
+        return false;
+    }
 }
 
 function getViewProUserByUsername($username) {
-    global $norago_api_config;
-    
     error_log("ViewPro: Looking up user by username: " . $username);
     
-    $authResult = authenticateWithNoraGO();
-    if (is_string($authResult)) {
-        error_log("ViewPro: Authentication failed for user lookup: " . $authResult);
+    $conn = getViewProConnection();
+    if (!$conn) {
+        error_log("ViewPro: Database connection failed for user lookup");
         return null;
     }
     
-    $accessToken = $authResult["access_token"];
-    
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers?q=' . urlencode($username));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'accept: application/json, text/plain, */*',
-        'authorization: Bearer ' . $accessToken,
-        'content-type: application/json;charset=UTF-8'
-    ]);
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    error_log("ViewPro: User lookup HTTP code: " . $http_code . " for username: " . $username);
-    
-    if ($http_code == 200) {
-        $data = json_decode($response, true);
-        if (isset($data['content']) && !empty($data['content'])) {
-            foreach ($data['content'] as $subscriber) {
-                if ($subscriber['name'] == $username || $subscriber['accountNumber'] == $username) {
-                    error_log("ViewPro: Found subscriber ID: " . $subscriber['id'] . " for username: " . $username);
-                    return [
-                        'id' => $subscriber['id'],
-                        'norago_subid' => $subscriber['id'],
-                        'username' => $username,
-                        'email' => $subscriber['email'] ?? 'user@example.com',
-                        'first_name' => $subscriber['firstname'] ?? 'User',
-                        'expires_at' => $subscriber['expirationTime'] ?? date('Y-m-d H:i:s', strtotime('+30 days'))
-                    ];
-                }
-            }
-        }
+    $stmt = $conn->prepare("SELECT * FROM accounts WHERE username = ? LIMIT 1");
+    if (!$stmt) {
+        error_log("ViewPro: Failed to prepare statement: " . $conn->error);
+        $conn->close();
+        return null;
     }
     
-    error_log("ViewPro: No subscriber found for username: " . $username);
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $user = $result->fetch_assoc();
+        error_log("ViewPro: Found user in database with subscriber ID: " . $user['norago_subid']);
+        $stmt->close();
+        $conn->close();
+        return [
+            'id' => $user['id'],
+            'username' => $user['username'],
+            'email' => $user['email'],
+            'expires_at' => $user['expires_at'],
+            'norago_subid' => $user['norago_subid']
+        ];
+    }
+    
+    error_log("ViewPro: No user found in database for username: " . $username);
+    $stmt->close();
+    $conn->close();
     return null;
 }
 
