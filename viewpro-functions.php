@@ -160,6 +160,7 @@ function authenticateWithNoraGO() {
     curl_setopt($ch, CURLOPT_URL, 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/token');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+    curl_setopt($ch, CURLOPT_HEADER, 1);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'accept: */*',
         'accept-language: en-US,en;q=0.9',
@@ -183,7 +184,17 @@ function authenticateWithNoraGO() {
 
     error_log("ViewPro: Token exchange response: " . substr($response, 0, 500));
     
-    $jsonResponseAuth = json_decode($response, true);
+    $xsrfToken = null;
+    $tokenCookies = getCookies($response);
+    if (isset($tokenCookies['XSRF-TOKEN'])) {
+        $xsrfToken = $tokenCookies['XSRF-TOKEN'];
+        error_log("ViewPro: XSRF Token extracted from token exchange: " . $xsrfToken);
+    } else {
+        error_log("ViewPro: No XSRF token found in token exchange response");
+    }
+    
+    $responseBody = substr($response, strpos($response, "\r\n\r\n") + 4);
+    $jsonResponseAuth = json_decode($responseBody, true);
     
     error_log("ViewPro: JSON decode result: " . ($jsonResponseAuth ? "SUCCESS" : "FAILED"));
     error_log("ViewPro: Access token present: " . (isset($jsonResponseAuth["access_token"]) ? "YES" : "NO"));
@@ -194,24 +205,22 @@ function authenticateWithNoraGO() {
     }
 
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/subscribers');
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/info/timezone');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
     curl_setopt($ch, CURLOPT_HEADER, 1);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'accept: application/json, text/plain, */*',
         'accept-language: en-US,en;q=0.9',
         'authorization: Bearer ' . $jsonResponseAuth["access_token"],
-        'priority: u=0, i',
-        'referer: ' . $norago_api_config['base_url'] . '/nora/login?go=%2Fsubscribers',
+        'priority: u=1, i',
+        'referer: ' . $norago_api_config['base_url'] . '/nora/login?go=%2Fsubscribers%2F30069169',
         'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
         'sec-ch-ua-mobile: ?0',
         'sec-ch-ua-platform: "Windows"',
-        'sec-fetch-dest: document',
-        'sec-fetch-mode: navigate',
+        'sec-fetch-dest: empty',
+        'sec-fetch-mode: cors',
         'sec-fetch-site: same-origin',
-        'sec-fetch-user: ?1',
-        'upgrade-insecure-requests: 1',
         'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     ]);
 
@@ -220,6 +229,8 @@ function authenticateWithNoraGO() {
     
     $cookies = getCookies($response);
     $xsrfToken = isset($cookies["XSRF-TOKEN"]) ? $cookies["XSRF-TOKEN"] : null;
+    
+    error_log("ViewPro: XSRF Token from timezone API: " . ($xsrfToken ? substr($xsrfToken, 0, 20) . "..." : "NULL"));
     
     $jsonResponseAuth["xsrf_token"] = $xsrfToken;
     
@@ -1013,63 +1024,89 @@ function saveViewProUser($email, $firstName, $lastName, $phone, $username, $pass
     }
 }
 
-function getViewProUserByUsername($username) {
-    global $norago_api_config;
+function renewViewProAccount($username) {
+    global $norago_api_config, $viewpro_settings;
     
-    error_log("ViewPro: Looking up user by username in NoraGO API: " . $username);
-    
-    $conn = getViewProConnection();
-    if ($conn) {
-        $stmt = $conn->prepare("SELECT * FROM accounts WHERE username = ? LIMIT 1");
-        if ($stmt) {
-            $stmt->bind_param("s", $username);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
-            if ($result->num_rows > 0) {
-                $user = $result->fetch_assoc();
-                error_log("ViewPro: Found user in local database with subscriber ID: " . $user['norago_subid']);
-                $stmt->close();
-                $conn->close();
-                return [
-                    'id' => $user['id'],
-                    'username' => $user['username'],
-                    'email' => $user['email'],
-                    'expires_at' => $user['expires_at'],
-                    'norago_subid' => $user['norago_subid'],
-                    'first_name' => $user['first_name'] ?? '',
-                    'last_name' => $user['last_name'] ?? ''
-                ];
-            }
-            $stmt->close();
-        }
-        $conn->close();
-    }
-    
-    error_log("ViewPro: User not found locally, querying NoraGO API for username: " . $username);
+    error_log("ViewPro: Starting direct renewal for username: " . $username);
     
     $authResult = authenticateWithNoraGO();
     if (is_string($authResult)) {
-        error_log("ViewPro: Authentication failed for user lookup: " . $authResult);
-        return null;
+        error_log("ViewPro: Authentication failed for renewal: " . $authResult);
+        return "Authentication failed";
     }
     
     $accessToken = $authResult["access_token"];
     $xsrfToken = $authResult["xsrf_token"];
     
     if (!$xsrfToken) {
-        error_log("ViewPro: No XSRF token available for user lookup");
-        return null;
+        error_log("ViewPro: No XSRF token available for renewal");
+        return "No XSRF token available";
     }
     
+    error_log("ViewPro: Proceeding with renewal API calls for username: " . $username);
+    
+    $renewalData = [
+        "accountNumber" => $username,
+        "networkId" => $norago_api_config['network_id'],
+        "networkPrefix" => $norago_api_config['network_prefix'],
+        "subscriptionDays" => $viewpro_settings['subscription_days'],
+        "amount" => $viewpro_settings['subscription_price']
+    ];
+    
+    for ($i = 1; $i <= 4; $i++) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $username . '/slots');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($renewalData));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'accept: application/json, text/plain, */*',
+            'accept-language: en-US,en;q=0.9',
+            'authorization: Bearer ' . $accessToken,
+            'content-type: application/json',
+            'origin: ' . $norago_api_config['base_url'],
+            'priority: u=1, i',
+            'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers',
+            'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+            'sec-ch-ua-mobile: ?0',
+            'sec-ch-ua-platform: "Windows"',
+            'sec-fetch-dest: empty',
+            'sec-fetch-mode: cors',
+            'sec-fetch-site: same-origin',
+            'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+            'x-xsrf-token: ' . $xsrfToken,
+        ]);
+        curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
+        
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        error_log("ViewPro: Slots API call " . $i . " - HTTP code: " . $http_code);
+        
+        if ($http_code != 201 && $http_code != 200) {
+            error_log("ViewPro: Slots API call " . $i . " failed - HTTP code: " . $http_code . " Response: " . substr($response, 0, 500));
+        }
+    }
+    
+    $paymentData = [
+        "accountNumber" => $username,
+        "amount" => $viewpro_settings['subscription_price'],
+        "paymentMethod" => "Credit Card",
+        "transactionId" => "VP-" . time() . "-" . rand(1000, 9999),
+        "description" => "ViewProPlus Subscription Renewal - 30 days"
+    ];
+    
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers?accountNumber=' . urlencode($username) . '&size=10&page=0');
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $username . '/payments');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($paymentData));
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'accept: application/json, text/plain, */*',
         'accept-language: en-US,en;q=0.9',
         'authorization: Bearer ' . $accessToken,
+        'content-type: application/json',
         'origin: ' . $norago_api_config['base_url'],
         'priority: u=1, i',
         'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers',
@@ -1088,31 +1125,15 @@ function getViewProUserByUsername($username) {
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     
-    error_log("ViewPro: NoraGO API search response HTTP code: " . $http_code . " for username: " . $username);
+    error_log("ViewPro: Payment API call - HTTP code: " . $http_code);
     
-    if ($http_code == 200) {
-        $responseData = json_decode($response, true);
-        
-        if ($responseData && isset($responseData['content']) && is_array($responseData['content']) && count($responseData['content']) > 0) {
-            $subscriber = $responseData['content'][0];
-            
-            error_log("ViewPro: Found subscriber in NoraGO API: " . json_encode($subscriber));
-            
-            return [
-                'id' => null, // No local database ID
-                'username' => $subscriber['accountNumber'] ?? $username,
-                'email' => $subscriber['email'] ?? '',
-                'expires_at' => $subscriber['expirationTime'] ?? null,
-                'norago_subid' => $subscriber['id'] ?? null,
-                'first_name' => $subscriber['firstname'] ?? '',
-                'last_name' => $subscriber['lastname'] ?? '',
-                'from_api' => true // Flag to indicate this came from API
-            ];
-        }
+    if ($http_code == 201 || $http_code == 200) {
+        error_log("ViewPro: Successfully renewed account: " . $username);
+        return "success";
+    } else {
+        error_log("ViewPro: Payment API call failed - HTTP code: " . $http_code . " Response: " . substr($response, 0, 500));
+        return "Payment processing failed";
     }
-    
-    error_log("ViewPro: No user found in NoraGO API for username: " . $username);
-    return null;
 }
 
 function getViewProUserByEmail($email) {

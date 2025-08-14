@@ -200,32 +200,13 @@ function handleRenewal() {
         return;
     }
     
-    $user = getViewProUserByUsername($username);
-    if (!$user) {
-        $error = "Account not found. Please check your username.";
-        return;
-    }
-    
-    $result = renewViewProAccount($user['norago_subid']);
+    $result = renewViewProAccount($username);
     
     if ($result === 'success') {
-        $newExpiration = date('Y-m-d H:i:s', strtotime($user['expires_at'] . ' +30 days'));
-        $updated = updateViewProUserExpiration($user['id'], $newExpiration);
-        
-        if ($updated) {
-            $newExpiresDate = date('F j, Y', strtotime($newExpiration));
-            $emailSent = sendRenewalEmail($user['email'], $user['first_name'], $user['username'], $newExpiresDate);
-            
-            if ($emailSent) {
-                $success = "Your account has been renewed for 30 days! Check your email for confirmation.";
-            } else {
-                $success = "Account renewed successfully! New expiration date: " . $newExpiresDate;
-            }
-        } else {
-            $error = "Account renewed but failed to update database. Please contact support.";
-        }
+        $newExpiresDate = date('F j, Y', strtotime('+30 days'));
+        $success = "Account renewed successfully! Your subscription has been extended by 30 days. New expiration date: " . $newExpiresDate;
     } else {
-        $error = "Failed to renew account. Please try again later.";
+        $error = "Failed to renew account: " . $result;
     }
 }
 
