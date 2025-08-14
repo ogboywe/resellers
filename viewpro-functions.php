@@ -1014,42 +1014,104 @@ function saveViewProUser($email, $firstName, $lastName, $phone, $username, $pass
 }
 
 function getViewProUserByUsername($username) {
-    error_log("ViewPro: Looking up user by username: " . $username);
+    global $norago_api_config;
+    
+    error_log("ViewPro: Looking up user by username in NoraGO API: " . $username);
     
     $conn = getViewProConnection();
-    if (!$conn) {
-        error_log("ViewPro: Database connection failed for user lookup");
+    if ($conn) {
+        $stmt = $conn->prepare("SELECT * FROM accounts WHERE username = ? LIMIT 1");
+        if ($stmt) {
+            $stmt->bind_param("s", $username);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows > 0) {
+                $user = $result->fetch_assoc();
+                error_log("ViewPro: Found user in local database with subscriber ID: " . $user['norago_subid']);
+                $stmt->close();
+                $conn->close();
+                return [
+                    'id' => $user['id'],
+                    'username' => $user['username'],
+                    'email' => $user['email'],
+                    'expires_at' => $user['expires_at'],
+                    'norago_subid' => $user['norago_subid'],
+                    'first_name' => $user['first_name'] ?? '',
+                    'last_name' => $user['last_name'] ?? ''
+                ];
+            }
+            $stmt->close();
+        }
+        $conn->close();
+    }
+    
+    error_log("ViewPro: User not found locally, querying NoraGO API for username: " . $username);
+    
+    $authResult = authenticateWithNoraGO();
+    if (is_string($authResult)) {
+        error_log("ViewPro: Authentication failed for user lookup: " . $authResult);
         return null;
     }
     
-    $stmt = $conn->prepare("SELECT * FROM accounts WHERE username = ? LIMIT 1");
-    if (!$stmt) {
-        error_log("ViewPro: Failed to prepare statement: " . $conn->error);
-        $conn->close();
+    $accessToken = $authResult["access_token"];
+    $xsrfToken = $authResult["xsrf_token"];
+    
+    if (!$xsrfToken) {
+        error_log("ViewPro: No XSRF token available for user lookup");
         return null;
     }
     
-    $stmt->bind_param("s", $username);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers?accountNumber=' . urlencode($username) . '&size=10&page=0');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json, text/plain, */*',
+        'accept-language: en-US,en;q=0.9',
+        'authorization: Bearer ' . $accessToken,
+        'origin: ' . $norago_api_config['base_url'],
+        'priority: u=1, i',
+        'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: empty',
+        'sec-fetch-mode: cors',
+        'sec-fetch-site: same-origin',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
+    ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
     
-    if ($result->num_rows > 0) {
-        $user = $result->fetch_assoc();
-        error_log("ViewPro: Found user in database with subscriber ID: " . $user['norago_subid']);
-        $stmt->close();
-        $conn->close();
-        return [
-            'id' => $user['id'],
-            'username' => $user['username'],
-            'email' => $user['email'],
-            'expires_at' => $user['expires_at'],
-            'norago_subid' => $user['norago_subid']
-        ];
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    error_log("ViewPro: NoraGO API search response HTTP code: " . $http_code . " for username: " . $username);
+    
+    if ($http_code == 200) {
+        $responseData = json_decode($response, true);
+        
+        if ($responseData && isset($responseData['content']) && is_array($responseData['content']) && count($responseData['content']) > 0) {
+            $subscriber = $responseData['content'][0];
+            
+            error_log("ViewPro: Found subscriber in NoraGO API: " . json_encode($subscriber));
+            
+            return [
+                'id' => null, // No local database ID
+                'username' => $subscriber['accountNumber'] ?? $username,
+                'email' => $subscriber['email'] ?? '',
+                'expires_at' => $subscriber['expirationTime'] ?? null,
+                'norago_subid' => $subscriber['id'] ?? null,
+                'first_name' => $subscriber['firstname'] ?? '',
+                'last_name' => $subscriber['lastname'] ?? '',
+                'from_api' => true // Flag to indicate this came from API
+            ];
+        }
     }
     
-    error_log("ViewPro: No user found in database for username: " . $username);
-    $stmt->close();
-    $conn->close();
+    error_log("ViewPro: No user found in NoraGO API for username: " . $username);
     return null;
 }
 
