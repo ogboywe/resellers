@@ -3,7 +3,7 @@
 $viewpro_db_config = [
     'host' => 'localhost',
     'username' => 'root',
-    'password' => $_ENV['VIEWPRO_DB_PASSWORD'] ?? '',
+    'password' => 'L9cr2RafX0K7bPWyk1mw0zi2',
     'database' => 'ViewPro'
 ];
 
@@ -21,8 +21,8 @@ $norago_api_config = [
     'base_url' => 'https://freeworld.norago.tv',
     'auth_url' => 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/auth',
     'login_url' => 'https://us-sso.norago.tv/realms/465/login-actions/authenticate',
-    'username' => $_ENV['NORAGO_API_USERNAME'] ?? '',
-    'password' => $_ENV['NORAGO_API_PASSWORD'] ?? '',
+    'username' => 'admin@usa.com',
+    'password' => 'ABC123!!',
     'network_id' => 10000285,
     'network_prefix' => 'VV'
 ];
