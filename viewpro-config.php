@@ -3,7 +3,7 @@
 $viewpro_db_config = [
     'host' => 'localhost',
     'username' => 'root',
-    'password' => 'NoraGO12!',
+    'password' => $_ENV['VIEWPRO_DB_PASSWORD'] ?? 'your_db_password_here',
     'database' => 'ViewPro'
 ];
 
@@ -11,16 +11,18 @@ $email_config = [
     'smtp_host' => 'smtp.gmail.com',
     'smtp_port' => 587,
     'smtp_username' => 'noreply@viewproplus.com',
-    'smtp_password' => 'your_smtp_password',
+    'smtp_password' => $_ENV['VIEWPRO_SMTP_PASSWORD'] ?? 'your_smtp_password_here',
     'from_email' => 'noreply@viewproplus.com',
     'from_name' => 'ViewProPlus',
     'use_smtp' => false // Set to true when SMTP credentials are configured
 ];
 
 $norago_api_config = [
-    'base_url' => 'https://freeworld.norago.tv',
-    'username' => 'admin@usa.com',
-    'password' => 'ABC123!!',
+    'base_url' => 'https://us-sso.norago.tv',
+    'auth_url' => 'https://us-sso.norago.tv/realms/465/protocol/openid-connect/auth',
+    'login_url' => 'https://us-sso.norago.tv/realms/465/login-actions/authenticate',
+    'username' => $_ENV['NORAGO_API_USERNAME'] ?? 'your_api_username_here',
+    'password' => $_ENV['NORAGO_API_PASSWORD'] ?? 'your_api_password_here',
     'network_id' => 10000285,
     'network_prefix' => 'VV'
 ];
@@ -29,7 +31,14 @@ $viewpro_settings = [
     'subscription_price' => 89.97,
     'trial_days' => 1,
     'subscription_days' => 30,
-    'referral_bonus_days' => 30
+    'referral_bonus_days' => 30,
+    'default_address' => '384',
+    'default_city' => '2938',
+    'default_pincode' => '1234',
+    'default_zipcode' => '9238',
+    'default_state' => '',
+    'default_timezone' => 'America/Grenada',
+    'default_network_name' => 'VTV'
 ];
 
 function getViewProConnection() {
