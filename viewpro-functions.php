@@ -941,13 +941,54 @@ function saveViewProUser($email, $firstName, $lastName, $phone, $username, $pass
 }
 
 function getViewProUserByUsername($username) {
+    global $norago_api_config;
+    
     error_log("ViewPro: Looking up user by username: " . $username);
-    return [
-        'id' => rand(1000, 9999),
-        'username' => $username,
-        'email' => 'user@example.com',
-        'expires_at' => date('Y-m-d H:i:s', strtotime('+30 days'))
-    ];
+    
+    $authResult = authenticateWithNoraGO();
+    if (is_string($authResult)) {
+        error_log("ViewPro: Authentication failed for user lookup: " . $authResult);
+        return null;
+    }
+    
+    $accessToken = $authResult["access_token"];
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers?q=' . urlencode($username));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json, text/plain, */*',
+        'authorization: Bearer ' . $accessToken,
+        'content-type: application/json;charset=UTF-8'
+    ]);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    error_log("ViewPro: User lookup HTTP code: " . $http_code . " for username: " . $username);
+    
+    if ($http_code == 200) {
+        $data = json_decode($response, true);
+        if (isset($data['content']) && !empty($data['content'])) {
+            foreach ($data['content'] as $subscriber) {
+                if ($subscriber['name'] == $username || $subscriber['accountNumber'] == $username) {
+                    error_log("ViewPro: Found subscriber ID: " . $subscriber['id'] . " for username: " . $username);
+                    return [
+                        'id' => $subscriber['id'],
+                        'norago_subid' => $subscriber['id'],
+                        'username' => $username,
+                        'email' => $subscriber['email'] ?? 'user@example.com',
+                        'first_name' => $subscriber['firstname'] ?? 'User',
+                        'expires_at' => $subscriber['expirationTime'] ?? date('Y-m-d H:i:s', strtotime('+30 days'))
+                    ];
+                }
+            }
+        }
+    }
+    
+    error_log("ViewPro: No subscriber found for username: " . $username);
+    return null;
 }
 
 function getViewProUserByEmail($email) {
