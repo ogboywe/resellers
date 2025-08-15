@@ -964,64 +964,9 @@ function renewViewProAccount($username) {
         return "renewal_failed";
     }
     
-    error_log("ViewPro: Looking up subscriber ID for username: " . $username);
+    error_log("ViewPro: Attempting direct renewal for username: " . $username);
     
-    $subscriberId = null;
-    $found = false;
-    
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers?count=25&disabled=&new=&page=0&q=' . urlencode($username) . '&sort-by=lastName&sort-order=asc&withoutOptions=true');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'accept: application/json, text/plain, */*',
-        'accept-language: en-US,en;q=0.9',
-        'authorization: Bearer ' . $accessToken,
-        'origin: ' . $norago_api_config['base_url'],
-        'priority: u=1, i',
-        'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers',
-        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
-        'sec-ch-ua-mobile: ?0',
-        'sec-ch-ua-platform: "Windows"',
-        'sec-fetch-dest: empty',
-        'sec-fetch-mode: cors',
-        'sec-fetch-site: same-origin',
-        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-        'x-xsrf-token: ' . $xsrfToken,
-    ]);
-    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
-    
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    error_log("ViewPro: Searching for username " . $username . " using q parameter - HTTP code: " . $http_code);
-    
-    if ($http_code == 200) {
-        $responseData = json_decode($response, true);
-        
-        if ($responseData && isset($responseData['content']) && is_array($responseData['content'])) {
-            foreach ($responseData['content'] as $subscriber) {
-                if (isset($subscriber['accountNumber']) && $subscriber['accountNumber'] === $username) {
-                    $subscriberId = $subscriber['id'];
-                    error_log("ViewPro: Found subscriber ID " . $subscriberId . " for username: " . $username . " using search query");
-                    $found = true;
-                    break;
-                }
-            }
-        }
-        
-        if (!$found) {
-            error_log("ViewPro: Username " . $username . " not found in search results. Found " . count($responseData['content']) . " subscribers in response");
-        }
-    } else {
-        error_log("ViewPro: API error searching for username " . $username . " - HTTP code: " . $http_code . " Response: " . substr($response, 0, 200));
-    }
-    
-    if (!$subscriberId) {
-        error_log("ViewPro: No subscriber found for username: " . $username);
-        return "renewal_failed";
-    }
+    $subscriberId = $username;
     
     error_log("ViewPro: Proceeding with renewal for subscriber ID: " . $subscriberId);
     
