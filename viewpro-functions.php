@@ -240,7 +240,7 @@ function authenticateWithNoraGO() {
 }
 
 function createViewProTrial($email, $firstName, $lastName, $phoneNumber) {
-    global $norago_api_config;
+    global $norago_api_config, $viewpro_settings;
     
     error_log("ViewPro: Creating trial account for " . $email);
     
@@ -340,7 +340,7 @@ function createViewProTrial($email, $firstName, $lastName, $phoneNumber) {
         "notes" => [],
         "password" => $password,
         "paymentStatements" => [],
-        "phone" => $phoneNumber,
+        "phone" => preg_replace('/[^0-9]/', '', $phoneNumber),
         "pincode" => "1234",
         "registered" => null,
         "state" => "",
@@ -730,7 +730,7 @@ function createViewProSubscription($email, $firstName, $lastName, $phoneNumber) 
         "notes" => [],
         "password" => $password,
         "paymentStatements" => [],
-        "phone" => $phoneNumber,
+        "phone" => preg_replace('/[^0-9]/', '', $phoneNumber),
         "pincode" => "1234",
         "registered" => null,
         "state" => "",
@@ -950,6 +950,26 @@ function renewViewProAccount($username) {
     
     error_log("ViewPro: Starting renewal for username: " . $username);
     
+    $internalId = getUsernameToInternalIdMapping($username);
+    if ($internalId) {
+        error_log("ViewPro: Found internal ID mapping for username: " . $username . " -> " . $internalId);
+        $subscriberId = $internalId;
+        error_log("ViewPro: Using direct internal ID mapping for renewal: " . $subscriberId);
+    } else {
+        error_log("ViewPro: No direct internal ID mapping found for username: " . $username . ", checking database");
+        
+        $user = getViewProUserByUsername($username);
+        
+        if (!$user) {
+            error_log("ViewPro: User not found for renewal: " . $username);
+            return "user_not_found";
+        }
+        
+        $subscriberId = $user['internal_id'] ?? $user['norago_subid'] ?? preg_replace('/[^0-9]/', '', $username);
+    }
+    
+    error_log("ViewPro: Found subscriber ID for renewal: " . $subscriberId);
+    
     $authResult = authenticateWithNoraGO();
     if (is_string($authResult)) {
         error_log("ViewPro: Authentication failed for renewal: " . $authResult);
@@ -964,14 +984,37 @@ function renewViewProAccount($username) {
         return "renewal_failed";
     }
     
-    error_log("ViewPro: Attempting direct renewal for username: " . $username);
+    error_log("ViewPro: Proceeding with renewal for subscriber ID: " . $subscriberId . " (username: " . $username . ")");
     
-    $subscriberId = preg_replace('/[^0-9]/', '', $username);
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $subscriberId);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json, text/plain, */*',
+        'authorization: Bearer ' . $accessToken,
+        'x-xsrf-token: ' . $xsrfToken,
+    ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
     
-    error_log("ViewPro: Proceeding with renewal for subscriber ID: " . $subscriberId . " (extracted from username: " . $username . ")");
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($http_code != 200) {
+        error_log("ViewPro: Subscriber verification failed - HTTP code: " . $http_code . " Response: " . substr($response, 0, 500));
+        return "subscriber_not_found";
+    }
+    
+    $subscriberData = json_decode($response, true);
+    if (!$subscriberData || !isset($subscriberData['id'])) {
+        error_log("ViewPro: Invalid subscriber data received");
+        return "invalid_subscriber_data";
+    }
+    
+    error_log("ViewPro: Verified subscriber exists: " . $subscriberId . " (Account Number: " . ($subscriberData['accountNumber'] ?? 'N/A') . ")");
     
     for ($i = 1; $i <= 4; $i++) {
-        $slotsData = '{"id":null,"status":false,"code":null,"codeExpirationTime":null,"subscriber":{"id":' . $subscriberId . ',"name":null,"accessoryNotes":[],"accountNumber":"' . $username . '","address":"384","city":"2938","country":"US","creditCards":[],"currentPaymentStatement":null,"customChannels":[],"customVods":[],"dateOfBirth":null,"deleted":null,"devices":[],"deviceSlots":[],"email":"","enabled":true,"expirationTime":null,"firstname":"","foreignPlatformSubscriberId":"","hasUnlimitedSubscription":false,"language":null,"lastAccess":null,"lastname":"","network":{"id":10000285,"name":"VTV","backgroundColor":null,"categorySets":[],"customVideoUrl":null,"deviceCount":0,"hasAssignedAcl":null,"hasAvodSubscription":null,"listingType":"Sequence","multiorgEnabled":false,"multiorgId":null,"networkCatchupLinks":[],"networkChannelLinks":[],"networkThemeLinks":[],"pincode":null,"platforms":null,"prefix":"VV","startChannelSettingsEnabled":null,"startChannelSettingsDto":[],"startPageType":null,"staticChannel":null,"screenSaverSettings":null,"subscriberCount":null,"subscribers":[],"timezone":null,"voucherSubscribersAllowed":false,"logoUrl":null,"apiAccessUser":null},"notes":[],"password":null,"paymentStatements":[],"phone":"","pincode":null,"registered":null,"state":"","timeZone":null,"user":null,"zipcode":"9238","tvsAccountNumber":null,"tvsAccountStartDate":null,"tvsThaiId":null,"type":"NORMAL"}}';
+        $slotsData = '{"id":null,"status":false,"code":null,"codeExpirationTime":null,"subscriber":{"id":' . $subscriberId . ',"name":null,"accessoryNotes":[],"accountNumber":"' . ($subscriberData['accountNumber'] ?? $username) . '","address":"384","city":"2938","country":"US","creditCards":[],"currentPaymentStatement":null,"customChannels":[],"customVods":[],"dateOfBirth":null,"deleted":null,"devices":[],"deviceSlots":[],"email":"' . ($subscriberData['email'] ?? '') . '","enabled":true,"expirationTime":null,"firstname":"' . ($subscriberData['firstname'] ?? '') . '","foreignPlatformSubscriberId":"","hasUnlimitedSubscription":false,"language":null,"lastAccess":null,"lastname":"' . ($subscriberData['lastname'] ?? '') . '","network":{"id":10000285,"name":"VTV","backgroundColor":null,"categorySets":[],"customVideoUrl":null,"deviceCount":0,"hasAssignedAcl":null,"hasAvodSubscription":null,"listingType":"Sequence","multiorgEnabled":false,"multiorgId":null,"networkCatchupLinks":[],"networkChannelLinks":[],"networkThemeLinks":[],"pincode":null,"platforms":null,"prefix":"VV","startChannelSettingsEnabled":null,"startChannelSettingsDto":[],"startPageType":null,"staticChannel":null,"screenSaverSettings":null,"subscriberCount":null,"subscribers":[],"timezone":null,"voucherSubscribersAllowed":false,"logoUrl":null,"apiAccessUser":null},"notes":[],"password":null,"paymentStatements":[],"phone":"' . ($subscriberData['phone'] ?? '') . '","pincode":null,"registered":null,"state":"","timeZone":null,"user":null,"zipcode":"9238","tvsAccountNumber":null,"tvsAccountStartDate":null,"tvsThaiId":null,"type":"NORMAL"}}';
         
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $subscriberId . '/slots');
@@ -1047,6 +1090,146 @@ function renewViewProAccount($username) {
         error_log("ViewPro: Payment API call failed - HTTP code: " . $http_code . " Response: " . substr($response, 0, 500));
         return "renewal_failed";
     }
+}
+
+function getViewProUserByUsername($username) {
+    global $norago_api_config;
+    
+    error_log("ViewPro: Looking up user by username: " . $username);
+    
+    $conn = getViewProConnection();
+    if ($conn) {
+        $stmt = $conn->prepare("SELECT * FROM accounts WHERE username = ?");
+        if ($stmt) {
+            $stmt->bind_param("s", $username);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows > 0) {
+                $user = $result->fetch_assoc();
+                error_log("ViewPro: Found user in local database: " . $username . " (ID: " . $user['id'] . ")");
+                $stmt->close();
+                $conn->close();
+                return $user;
+            }
+            
+            $stmt->close();
+        }
+        $conn->close();
+    }
+    
+    error_log("ViewPro: User not found in local database, checking NoraGO API: " . $username);
+    
+    $authResult = authenticateWithNoraGO();
+    if (is_string($authResult)) {
+        error_log("ViewPro: Authentication failed for user lookup: " . $authResult);
+        return null;
+    }
+    
+    $accessToken = $authResult["access_token"];
+    $xsrfToken = $authResult["xsrf_token"];
+    
+    if (!$xsrfToken) {
+        error_log("ViewPro: No XSRF token available for user lookup");
+        return null;
+    }
+    
+    $internalId = getUsernameToInternalIdMapping($username);
+    if (!$internalId) {
+        $internalId = preg_replace('/[^0-9]/', '', $username);
+        error_log("ViewPro: No internal ID mapping found for username: " . $username . ", using numeric part: " . $internalId);
+    } else {
+        error_log("ViewPro: Found internal ID mapping for username: " . $username . " -> " . $internalId);
+    }
+    
+    error_log("ViewPro: Looking up internal ID: " . $internalId . " (from username: " . $username . ")");
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $internalId);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json, text/plain, */*',
+        'authorization: Bearer ' . $accessToken,
+        'x-xsrf-token: ' . $xsrfToken,
+    ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    error_log("ViewPro: API lookup HTTP code: " . $http_code);
+    
+    if ($http_code == 200) {
+        $data = json_decode($response, true);
+        if ($data && isset($data['id'])) {
+            error_log("ViewPro: Found subscriber in NoraGO API: " . $subscriberId . " (Account Number: " . ($data['accountNumber'] ?? 'N/A') . ")");
+            
+            $user = [
+                'id' => null, // No local ID
+                'norago_subid' => $data['id'],
+                'username' => $username, // Keep original username
+                'email' => $data['email'] ?? '',
+                'first_name' => $data['firstname'] ?? '',
+                'last_name' => $data['lastname'] ?? '',
+                'phone' => $data['phone'] ?? '',
+                'account_type' => 'external', // Mark as external account
+                'expires_at' => null, // No expiration info available
+                'internal_id' => $internalId
+            ];
+            
+            return $user;
+        }
+    }
+    
+    error_log("ViewPro: User not found in NoraGO API: " . $username);
+    return null;
+}
+
+function getUsernameToInternalIdMapping($username) {
+    $mapping = [
+        '15710' => '30068641',
+        '13590' => '30068644', 
+        '6724' => '30068629',
+        '72680' => '30068986',
+        '757610' => '30068950',
+        '31011' => '30069055',
+        '9807' => '30068983',
+        '757620' => '30068992',
+        '9337' => '30069058',
+        '04366' => '30068998',
+        '55400' => '30068989',
+        '69399' => '30069010',
+        '05290' => '30068977',
+        '7195' => '30069007',
+        '4586' => '30068932',
+        '0233' => '30069001',
+        '34550' => '30068959',
+        '8573' => '30069004',
+        '3970' => '30069013',
+        '75290' => '30069022',
+        '173999' => '30066945',
+        '9124' => '30069097',
+        '38550' => '30083150',
+        '13030' => '30083375',
+        '53080' => '30083501'
+    ];
+    
+    if (isset($mapping[$username])) {
+        return $mapping[$username];
+    }
+    
+    $cleanUsername = ltrim($username, '0');
+    if (isset($mapping[$cleanUsername])) {
+        return $mapping[$cleanUsername];
+    }
+    
+    $paddedUsername = str_pad($username, 5, '0', STR_PAD_LEFT);
+    if (isset($mapping[$paddedUsername])) {
+        return $mapping[$paddedUsername];
+    }
+    
+    return null;
 }
 
 function getViewProUserByEmail($email) {
