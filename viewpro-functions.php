@@ -966,9 +966,9 @@ function renewViewProAccount($username) {
     
     error_log("ViewPro: Attempting direct renewal for username: " . $username);
     
-    $subscriberId = $username;
+    $subscriberId = preg_replace('/[^0-9]/', '', $username);
     
-    error_log("ViewPro: Proceeding with renewal for subscriber ID: " . $subscriberId);
+    error_log("ViewPro: Proceeding with renewal for subscriber ID: " . $subscriberId . " (extracted from username: " . $username . ")");
     
     for ($i = 1; $i <= 4; $i++) {
         $slotsData = '{"id":null,"status":false,"code":null,"codeExpirationTime":null,"subscriber":{"id":' . $subscriberId . ',"name":null,"accessoryNotes":[],"accountNumber":"' . $username . '","address":"384","city":"2938","country":"US","creditCards":[],"currentPaymentStatement":null,"customChannels":[],"customVods":[],"dateOfBirth":null,"deleted":null,"devices":[],"deviceSlots":[],"email":"","enabled":true,"expirationTime":null,"firstname":"","foreignPlatformSubscriberId":"","hasUnlimitedSubscription":false,"language":null,"lastAccess":null,"lastname":"","network":{"id":10000285,"name":"VTV","backgroundColor":null,"categorySets":[],"customVideoUrl":null,"deviceCount":0,"hasAssignedAcl":null,"hasAvodSubscription":null,"listingType":"Sequence","multiorgEnabled":false,"multiorgId":null,"networkCatchupLinks":[],"networkChannelLinks":[],"networkThemeLinks":[],"pincode":null,"platforms":null,"prefix":"VV","startChannelSettingsEnabled":null,"startChannelSettingsDto":[],"startPageType":null,"staticChannel":null,"screenSaverSettings":null,"subscriberCount":null,"subscribers":[],"timezone":null,"voucherSubscribersAllowed":false,"logoUrl":null,"apiAccessUser":null},"notes":[],"password":null,"paymentStatements":[],"phone":"","pincode":null,"registered":null,"state":"","timeZone":null,"user":null,"zipcode":"9238","tvsAccountNumber":null,"tvsAccountStartDate":null,"tvsThaiId":null,"type":"NORMAL"}}';
