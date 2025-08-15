@@ -907,85 +907,6 @@ function createViewProSubscription($email, $firstName, $lastName, $phoneNumber) 
     ];
 }
 
-function renewViewProAccount($subscriberId) {
-    global $norago_api_config, $viewpro_settings;
-    
-    error_log("ViewPro: Renewing account for subscriber " . $subscriberId);
-    
-    $authResult = authenticateWithNoraGO();
-    if (is_string($authResult)) {
-        return $authResult; // Return error string
-    }
-    
-    $accessToken = $authResult["access_token"];
-    $xsrfToken = $authResult["xsrf_token"];
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $subscriberId . '/payments');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'accept: application/json, text/plain, */*',
-        'accept-language: en-US,en;q=0.9',
-        'authorization: Bearer ' . $accessToken,
-        'content-type: application/json;charset=UTF-8',
-        'origin: ' . $norago_api_config['base_url'],
-        'priority: u=1, i',
-        'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers/' . $subscriberId . '/activation',
-        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
-        'sec-ch-ua-mobile: ?0',
-        'sec-ch-ua-platform: "Windows"',
-        'sec-fetch-dest: empty',
-        'sec-fetch-mode: cors',
-        'sec-fetch-site: same-origin',
-        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-        'x-xsrf-token: ' . $xsrfToken,
-    ]);
-    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
-    
-    $paymentPayload = json_encode([
-        "approvalRequired" => false,
-        "currencyConverterType" => "FIXER_IO",
-        "currencyId" => 14001,
-        "paymentKey" => null,
-        "subscriberId" => (int)$subscriberId,
-        "autoPay" => false,
-        "comment" => null,
-        "contentAddonsAutoPay" => false,
-        "devicesToPay" => 6,
-        "length" => 1,
-        "lengthType" => "Months", // 1 month renewal
-        "override" => true,
-        "paymentType" => "Custom_Subscription",
-        "price" => 0,
-        "prorateToUpcoming" => true,
-        "prorateSubscription" => false,
-        "subscriptionId" => 210406315,
-        "subscription" => null,
-        "contentAddOns" => null,
-        "contentSetAddOns" => [],
-        "checkNumber" => null,
-        "creditCardId" => null,
-        "externalPaymentSystemType" => null,
-        "paymentSystemType" => "CASH",
-        "transactionId" => null,
-        "location" => null,
-        "accessoryIds" => []
-    ]);
-    
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $paymentPayload);
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    error_log("ViewPro: Renewal payment HTTP code: " . $http_code . " for subscriber " . $subscriberId);
-    
-    if ($http_code == 200) {
-        return "success";
-    } else {
-        return "renewal_failed";
-    }
-}
 
 function saveViewProUser($email, $firstName, $lastName, $phone, $username, $password, $subscriberId, $accountType, $referredBy = null) {
     error_log("ViewPro: Saving user data for " . $email . " (username: " . $username . ", subscriber ID: " . $subscriberId . ")");
@@ -1027,12 +948,12 @@ function saveViewProUser($email, $firstName, $lastName, $phone, $username, $pass
 function renewViewProAccount($username) {
     global $norago_api_config, $viewpro_settings;
     
-    error_log("ViewPro: Starting direct renewal for username: " . $username);
+    error_log("ViewPro: Starting renewal for username: " . $username);
     
     $authResult = authenticateWithNoraGO();
     if (is_string($authResult)) {
         error_log("ViewPro: Authentication failed for renewal: " . $authResult);
-        return "Authentication failed";
+        return "renewal_failed";
     }
     
     $accessToken = $authResult["access_token"];
@@ -1040,33 +961,86 @@ function renewViewProAccount($username) {
     
     if (!$xsrfToken) {
         error_log("ViewPro: No XSRF token available for renewal");
-        return "No XSRF token available";
+        return "renewal_failed";
     }
     
-    error_log("ViewPro: Proceeding with renewal API calls for username: " . $username);
+    error_log("ViewPro: Looking up subscriber ID for username: " . $username);
     
-    $renewalData = [
-        "accountNumber" => $username,
-        "networkId" => $norago_api_config['network_id'],
-        "networkPrefix" => $norago_api_config['network_prefix'],
-        "subscriptionDays" => $viewpro_settings['subscription_days'],
-        "amount" => $viewpro_settings['subscription_price']
-    ];
+    $subscriberId = null;
+    $found = false;
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers?count=25&disabled=&new=&page=0&q=' . urlencode($username) . '&sort-by=lastName&sort-order=asc&withoutOptions=true');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'accept: application/json, text/plain, */*',
+        'accept-language: en-US,en;q=0.9',
+        'authorization: Bearer ' . $accessToken,
+        'origin: ' . $norago_api_config['base_url'],
+        'priority: u=1, i',
+        'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers',
+        'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        'sec-ch-ua-mobile: ?0',
+        'sec-ch-ua-platform: "Windows"',
+        'sec-fetch-dest: empty',
+        'sec-fetch-mode: cors',
+        'sec-fetch-site: same-origin',
+        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'x-xsrf-token: ' . $xsrfToken,
+    ]);
+    curl_setopt($ch, CURLOPT_COOKIE, 'XSRF-TOKEN=' . $xsrfToken);
+    
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    error_log("ViewPro: Searching for username " . $username . " using q parameter - HTTP code: " . $http_code);
+    
+    if ($http_code == 200) {
+        $responseData = json_decode($response, true);
+        
+        if ($responseData && isset($responseData['content']) && is_array($responseData['content'])) {
+            foreach ($responseData['content'] as $subscriber) {
+                if (isset($subscriber['accountNumber']) && $subscriber['accountNumber'] === $username) {
+                    $subscriberId = $subscriber['id'];
+                    error_log("ViewPro: Found subscriber ID " . $subscriberId . " for username: " . $username . " using search query");
+                    $found = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!$found) {
+            error_log("ViewPro: Username " . $username . " not found in search results. Found " . count($responseData['content']) . " subscribers in response");
+        }
+    } else {
+        error_log("ViewPro: API error searching for username " . $username . " - HTTP code: " . $http_code . " Response: " . substr($response, 0, 200));
+    }
+    
+    if (!$subscriberId) {
+        error_log("ViewPro: No subscriber found for username: " . $username);
+        return "renewal_failed";
+    }
+    
+    error_log("ViewPro: Proceeding with renewal for subscriber ID: " . $subscriberId);
     
     for ($i = 1; $i <= 4; $i++) {
+        $slotsData = '{"id":null,"status":false,"code":null,"codeExpirationTime":null,"subscriber":{"id":' . $subscriberId . ',"name":null,"accessoryNotes":[],"accountNumber":"' . $username . '","address":"384","city":"2938","country":"US","creditCards":[],"currentPaymentStatement":null,"customChannels":[],"customVods":[],"dateOfBirth":null,"deleted":null,"devices":[],"deviceSlots":[],"email":"","enabled":true,"expirationTime":null,"firstname":"","foreignPlatformSubscriberId":"","hasUnlimitedSubscription":false,"language":null,"lastAccess":null,"lastname":"","network":{"id":10000285,"name":"VTV","backgroundColor":null,"categorySets":[],"customVideoUrl":null,"deviceCount":0,"hasAssignedAcl":null,"hasAvodSubscription":null,"listingType":"Sequence","multiorgEnabled":false,"multiorgId":null,"networkCatchupLinks":[],"networkChannelLinks":[],"networkThemeLinks":[],"pincode":null,"platforms":null,"prefix":"VV","startChannelSettingsEnabled":null,"startChannelSettingsDto":[],"startPageType":null,"staticChannel":null,"screenSaverSettings":null,"subscriberCount":null,"subscribers":[],"timezone":null,"voucherSubscribersAllowed":false,"logoUrl":null,"apiAccessUser":null},"notes":[],"password":null,"paymentStatements":[],"phone":"","pincode":null,"registered":null,"state":"","timeZone":null,"user":null,"zipcode":"9238","tvsAccountNumber":null,"tvsAccountStartDate":null,"tvsThaiId":null,"type":"NORMAL"}}';
+        
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $username . '/slots');
+        curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $subscriberId . '/slots');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($renewalData));
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $slotsData);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'accept: application/json, text/plain, */*',
             'accept-language: en-US,en;q=0.9',
             'authorization: Bearer ' . $accessToken,
-            'content-type: application/json',
+            'content-type: application/json;charset=UTF-8',
             'origin: ' . $norago_api_config['base_url'],
             'priority: u=1, i',
-            'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers',
+            'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers/' . $subscriberId . '/activation',
             'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
             'sec-ch-ua-mobile: ?0',
             'sec-ch-ua-platform: "Windows"',
@@ -1089,27 +1063,21 @@ function renewViewProAccount($username) {
         }
     }
     
-    $paymentData = [
-        "accountNumber" => $username,
-        "amount" => $viewpro_settings['subscription_price'],
-        "paymentMethod" => "Credit Card",
-        "transactionId" => "VP-" . time() . "-" . rand(1000, 9999),
-        "description" => "ViewProPlus Subscription Renewal - 30 days"
-    ];
+    $paymentData = '{"approvalRequired":false,"currencyConverterType":"FIXER_IO","currencyId":14001,"paymentKey":null,"subscriberId":' . $subscriberId . ',"autoPay":false,"comment":"ViewProPlus Renewal","contentAddonsAutoPay":false,"devicesToPay":6,"length":1,"lengthType":"Months","override":true,"paymentType":"Custom_Subscription","price":0,"prorateToUpcoming":true,"prorateSubscription":false,"subscriptionId":210406315,"subscription":null,"contentAddOns":null,"contentSetAddOns":[],"checkNumber":null,"creditCardId":null,"externalPaymentSystemType":null,"paymentSystemType":"CASH","transactionId":null,"location":null,"accessoryIds":[]}';
     
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $username . '/payments');
+    curl_setopt($ch, CURLOPT_URL, $norago_api_config['base_url'] . '/nora/api/subscribers/' . $subscriberId . '/payments');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($paymentData));
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $paymentData);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'accept: application/json, text/plain, */*',
         'accept-language: en-US,en;q=0.9',
         'authorization: Bearer ' . $accessToken,
-        'content-type: application/json',
+        'content-type: application/json;charset=UTF-8',
         'origin: ' . $norago_api_config['base_url'],
         'priority: u=1, i',
-        'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers',
+        'referer: ' . $norago_api_config['base_url'] . '/nora/subscribers/' . $subscriberId . '/activation',
         'sec-ch-ua: "Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
         'sec-ch-ua-mobile: ?0',
         'sec-ch-ua-platform: "Windows"',
@@ -1128,11 +1096,11 @@ function renewViewProAccount($username) {
     error_log("ViewPro: Payment API call - HTTP code: " . $http_code);
     
     if ($http_code == 201 || $http_code == 200) {
-        error_log("ViewPro: Successfully renewed account: " . $username);
+        error_log("ViewPro: Successfully renewed account: " . $username . " (ID: " . $subscriberId . ")");
         return "success";
     } else {
         error_log("ViewPro: Payment API call failed - HTTP code: " . $http_code . " Response: " . substr($response, 0, 500));
-        return "Payment processing failed";
+        return "renewal_failed";
     }
 }
 
