@@ -566,33 +566,84 @@ function checkRateLimit($ip) {
             <section class="section">
                 <div class="container">
                     <div class="form-section">
-                        <h2>Download ViewProPlus</h2>
+                        <h2>DOWNLOAD ON FIRESTICK</h2>
                         <p>Get our apps for the best viewing experience on all your devices</p>
                         
-                        <div class="features-grid">
-                            <div class="feature-card">
-                                <div class="icon"><i class="fab fa-android"></i></div>
-                                <h3>Android</h3>
-                                <p>Download from Google Play Store</p>
-                                <a href="#" class="btn" style="margin-top: 1rem;">Download</a>
-                            </div>
-                            <div class="feature-card">
-                                <div class="icon"><i class="fab fa-apple"></i></div>
-                                <h3>iOS</h3>
-                                <p>Download from App Store</p>
-                                <a href="#" class="btn" style="margin-top: 1rem;">Download</a>
-                            </div>
-                            <div class="feature-card">
-                                <div class="icon"><i class="fab fa-windows"></i></div>
-                                <h3>Windows</h3>
-                                <p>Download for Windows PC</p>
-                                <a href="#" class="btn" style="margin-top: 1rem;">Download</a>
-                            </div>
-                            <div class="feature-card">
+                        <!-- Firestick Instructions -->
+                        <div class="download-section">
+                            <div class="device-header">
                                 <div class="icon"><i class="fas fa-tv"></i></div>
-                                <h3>Smart TV</h3>
-                                <p>Available on most smart TV platforms</p>
-                                <a href="#" class="btn" style="margin-top: 1rem;">Learn More</a>
+                                <h3>Firestick</h3>
+                            </div>
+                            <ol class="installation-steps">
+                                <li>From the HOME page scroll to Settings</li>
+                                <li>Select My FireTV than select Developer Options (If you dont see Developer Options it maybe hidden)</li>
+                                <li>Select ABOUT and Hit the big circle on Remote 7x to reveal the now-hidden Developer Options menu and hit the back button and Developer Options will show up Navigate to the About section in Settings</li>
+                                <li>Select Apps from Unknown Sources and make sure it is Turned ON</li>
+                                <li>Return to the Home Screen and hover over to the left called Search icon</li>
+                                <li>Type in "Downloader" select the Downloader App and Install and Open (<strong>Make sure you ACCEPT ALLOW Pictures option when it pops, otherwise won't allow you to install app</strong>)</li>
+                                <li>Type these numbers into downloader; <strong>2040501</strong></li>
+                                <li>Scroll down and select "Install"</li>
+                            </ol>
+                        </div>
+
+                        <!-- Mac Instructions -->
+                        <div class="download-section">
+                            <div class="device-header">
+                                <div class="icon"><i class="fab fa-apple"></i></div>
+                                <h3>Install on Apple MAC (dmg)</h3>
+                            </div>
+                            <p>Copy and paste this Link in your Web Browser:</p>
+                            <div class="download-link">
+                                <a href="https://serv1cdn.setplex.net/pcapps/norago/darwin/x64/NoraGO-2.3.0.dmg" class="btn btn-primary" target="_blank">Download for Mac</a>
+                            </div>
+                        </div>
+
+                        <!-- Smart TV, Apple TV, Roku -->
+                        <div class="download-section">
+                            <div class="device-header">
+                                <div class="icon"><i class="fas fa-tv"></i></div>
+                                <h3>Smart TV, APPLE TV and ROKU</h3>
+                            </div>
+                            <ol class="installation-steps">
+                                <li>Go to your App Store and search for "NoraGo" or "SoPlayer" App and Install it</li>
+                                <li>Enter in your login Info</li>
+                            </ol>
+                        </div>
+
+                        <!-- iPhone and iPad -->
+                        <div class="download-section">
+                            <div class="device-header">
+                                <div class="icon"><i class="fab fa-apple"></i></div>
+                                <h3>Install on Apple iPhone and Tablet</h3>
+                            </div>
+                            <ol class="installation-steps">
+                                <li>Go to your App Store and search for "NoraGo" App or "SoPlayer" and Install</li>
+                                <li>Enter in your login Info</li>
+                            </ol>
+                        </div>
+
+                        <!-- Android Phone, Tablet -->
+                        <div class="download-section">
+                            <div class="device-header">
+                                <div class="icon"><i class="fab fa-android"></i></div>
+                                <h3>Android Phone, Tablet</h3>
+                            </div>
+                            <ol class="installation-steps">
+                                <li>Go to your Google Play Store and search for "NoraGo" App and Install it</li>
+                                <li>Enter in your login Info</li>
+                            </ol>
+                        </div>
+
+                        <!-- PC Instructions -->
+                        <div class="download-section">
+                            <div class="device-header">
+                                <div class="icon"><i class="fab fa-windows"></i></div>
+                                <h3>Install on PC (exe)</h3>
+                            </div>
+                            <p>Copy and paste this Link in your Web Browser:</p>
+                            <div class="download-link">
+                                <a href="https://serv1cdn.setplex.net/pcapps/norago/win32/x64/NoraGO%20Setup%202.4.1.exe" class="btn btn-primary" target="_blank">Download for PC</a>
                             </div>
                         </div>
                     </div>
