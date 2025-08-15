@@ -24,6 +24,32 @@ $success = '';
 $error = '';
 $section = isset($_GET['section']) ? $_GET['section'] : 'home';
 
+if (isset($_POST['action']) && $_POST['action'] === 'lookup_username' && isset($_POST['username'])) {
+    header('Content-Type: application/json');
+    
+    $username = trim($_POST['username']);
+    if (empty($username)) {
+        echo json_encode(['success' => false, 'message' => 'Username is required']);
+        exit;
+    }
+    
+    $user = getViewProUserByUsername($username);
+    if ($user) {
+        echo json_encode([
+            'success' => true,
+            'user' => [
+                'first_name' => $user['first_name'] ?? '',
+                'last_name' => $user['last_name'] ?? '',
+                'email' => $user['email'] ?? '',
+                'username' => $username
+            ]
+        ]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Username not found']);
+    }
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRF Protection
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
@@ -541,16 +567,60 @@ function checkRateLimit($ip) {
                         </div>
                         
                         <div class="form-container">
-                            <form method="POST">
+                            <form method="POST" id="renewForm">
                                 <input type="hidden" name="action" value="renew">
                                 <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
                                 
                                 <div class="form-group">
                                     <label for="username">Your Username</label>
                                     <input type="text" id="username" name="username" required placeholder="Enter your ViewProPlus username">
+                                    <div id="username-loading" class="loading-indicator" style="display: none;">
+                                        <i class="fas fa-spinner fa-spin"></i> Looking up account...
+                                    </div>
                                 </div>
                                 
-                                <button type="submit" class="btn btn-warning">Renew Subscription</button>
+                                <!-- User Verification Display -->
+                                <div id="user-verification" class="user-verification" style="display: none;">
+                                    <div class="verification-card">
+                                        <div class="verification-header">
+                                            <i class="fas fa-user-check"></i>
+                                            <h3>Account Found</h3>
+                                        </div>
+                                        <div class="verification-details">
+                                            <p><strong>Name:</strong> <span id="user-name"></span></p>
+                                            <p><strong>Email:</strong> <span id="user-email"></span></p>
+                                            <p><strong>Username:</strong> <span id="user-username"></span></p>
+                                        </div>
+                                        <div class="verification-question">
+                                            <p><strong>Is this your account?</strong></p>
+                                            <div class="verification-buttons">
+                                                <button type="button" id="confirm-account" class="btn btn-success">
+                                                    <i class="fas fa-check"></i> Yes, this is my account
+                                                </button>
+                                                <button type="button" id="cancel-verification" class="btn btn-secondary">
+                                                    <i class="fas fa-times"></i> No, try different username
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Error Display -->
+                                <div id="username-error" class="alert alert-danger" style="display: none;">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <span id="error-message"></span>
+                                </div>
+                                
+                                <!-- Renewal Form (hidden until verified) -->
+                                <div id="renewal-section" style="display: none;">
+                                    <div class="alert alert-success">
+                                        <i class="fas fa-check-circle"></i>
+                                        Account verified! You can now proceed with renewal.
+                                    </div>
+                                    <button type="submit" class="btn btn-warning">
+                                        <i class="fas fa-sync-alt"></i> Renew Subscription
+                                    </button>
+                                </div>
                             </form>
                         </div>
                         
@@ -720,8 +790,107 @@ function checkRateLimit($ip) {
             });
         });
 
+        let lookupTimeout;
+        const usernameInput = document.getElementById('username');
+        const usernameLoading = document.getElementById('username-loading');
+        const userVerification = document.getElementById('user-verification');
+        const usernameError = document.getElementById('username-error');
+        const renewalSection = document.getElementById('renewal-section');
+        const renewForm = document.getElementById('renewForm');
+        
+        if (usernameInput) {
+            usernameInput.addEventListener('input', function() {
+                const username = this.value.trim();
+                
+                clearTimeout(lookupTimeout);
+                
+                hideAllVerificationSections();
+                
+                if (username.length >= 3) {
+                    lookupTimeout = setTimeout(() => {
+                        lookupUsername(username);
+                    }, 500);
+                }
+            });
+        }
+        
+        function hideAllVerificationSections() {
+            if (usernameLoading) usernameLoading.style.display = 'none';
+            if (userVerification) userVerification.style.display = 'none';
+            if (usernameError) usernameError.style.display = 'none';
+            if (renewalSection) renewalSection.style.display = 'none';
+        }
+        
+        function lookupUsername(username) {
+            if (usernameLoading) usernameLoading.style.display = 'block';
+            
+            const formData = new FormData();
+            formData.append('action', 'lookup_username');
+            formData.append('username', username);
+            
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (usernameLoading) usernameLoading.style.display = 'none';
+                
+                if (data.success) {
+                    showUserVerification(data.user);
+                } else {
+                    showError(data.message || 'Username not found');
+                }
+            })
+            .catch(error => {
+                if (usernameLoading) usernameLoading.style.display = 'none';
+                showError('Error looking up username. Please try again.');
+                console.error('Username lookup error:', error);
+            });
+        }
+        
+        function showUserVerification(user) {
+            if (userVerification) {
+                document.getElementById('user-name').textContent = `${user.first_name} ${user.last_name}`;
+                document.getElementById('user-email').textContent = user.email || 'Not provided';
+                document.getElementById('user-username').textContent = user.username;
+                userVerification.style.display = 'block';
+            }
+        }
+        
+        function showError(message) {
+            if (usernameError && document.getElementById('error-message')) {
+                document.getElementById('error-message').textContent = message;
+                usernameError.style.display = 'block';
+            }
+        }
+        
+        document.addEventListener('click', function(e) {
+            if (e.target.id === 'confirm-account' || e.target.closest('#confirm-account')) {
+                if (userVerification) userVerification.style.display = 'none';
+                if (renewalSection) renewalSection.style.display = 'block';
+            }
+            
+            if (e.target.id === 'cancel-verification' || e.target.closest('#cancel-verification')) {
+                hideAllVerificationSections();
+                if (usernameInput) {
+                    usernameInput.value = '';
+                    usernameInput.focus();
+                }
+            }
+        });
+
         document.querySelectorAll('form').forEach(form => {
             form.addEventListener('submit', function(e) {
+                if (form.id === 'renewForm') {
+                    const renewalSectionVisible = renewalSection && renewalSection.style.display !== 'none';
+                    if (!renewalSectionVisible) {
+                        e.preventDefault();
+                        alert('Please verify your account first by entering your username.');
+                        return;
+                    }
+                }
+                
                 const requiredFields = form.querySelectorAll('[required]');
                 let isValid = true;
                 

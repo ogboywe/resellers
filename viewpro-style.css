@@ -954,3 +954,132 @@ html {
 ::-webkit-scrollbar-thumb:hover {
     background: #0056b3;
 }
+
+/* User Verification Styles */
+.user-verification {
+    margin: 1.5rem 0;
+    animation: fadeIn 0.3s ease-in;
+}
+
+.verification-card {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 15px;
+    padding: 1.5rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.verification-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+    color: #28a745;
+}
+
+.verification-header i {
+    font-size: 1.5rem;
+    margin-right: 0.5rem;
+}
+
+.verification-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.verification-details {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    border-left: 4px solid #007bff;
+}
+
+.verification-details p {
+    margin: 0.5rem 0;
+    font-size: 0.95rem;
+}
+
+.verification-details strong {
+    color: #007bff;
+    font-weight: 600;
+}
+
+.verification-question {
+    margin-top: 1.5rem;
+    text-align: center;
+}
+
+.verification-question p {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.verification-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.verification-buttons .btn {
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    border-radius: 25px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.verification-buttons .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    border: none;
+    color: white;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #218838, #1ea080);
+}
+
+.btn-secondary {
+    background: linear-gradient(135deg, #6c757d, #5a6268);
+    border: none;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(135deg, #5a6268, #495057);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive adjustments for verification */
+@media (max-width: 768px) {
+    .verification-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .verification-buttons .btn {
+        width: 100%;
+        max-width: 280px;
+    }
+}
